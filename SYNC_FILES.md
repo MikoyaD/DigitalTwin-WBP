@@ -20,4 +20,9 @@ mkdir -p v2/outputs/workspace_tools
 V2_PRP_CONFIG_MODE=1 bash --noprofile --norc -c 'source v2/scripts/env_noetic.sh; g++ -std=c++14 v2/adapters/workspace_probe.cpp -o v2/outputs/workspace_tools/workspace_probe $(pkg-config --cflags --libs moveit_planners_ompl moveit_ros_planning)'
 ```
 
-该命令沿用现有构建方式，本轮未在第二台电脑实测。将不同机器的工作区各自构建后核对机器人模型和 PlanningScene，再运行 YAML；新 P→最终碰撞全链路尚待 ROS 实际验收。当前 YAML 输出上限不涵盖旧直调入口。
+该命令沿用现有构建方式，本轮未在第二台电脑实测。将不同机器的工作区各自构建后核对机器人模型和 PlanningScene，再运行 YAML；2026-11-19 在实验室电脑上已取得新 P 五目标数值及仓储离散碰撞基线；这不代表第二台电脑场景、ROS 或仿真已验。五目标结果超 30 MiB，当前 YAML 输出上限也不涵盖旧直调入口。详细限制参见 `CHANGELOG.md` 和 `v2/docs/V2_PRP_RUNBOOK.md`。
+
+
+## 文档
+
+本仓库跟踪 `CHANGELOG.md` 和 `v2/docs/V2_PRP_RUNBOOK.md`；仓库外的正式 `/home/robot/digitaltwin/项目报告.md` 与研究 evidence 仍由原位置维护，不通过本仓库同步。运行手册是发布时复制的快照；后续修改需同步更新本机和仓库副本。

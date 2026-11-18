@@ -13,11 +13,15 @@ def _path(value,base):
  p=Path(os.path.expanduser(value));return (p if p.is_absolute() else base/p).resolve()
 
 
-def run(config_path):
+def run(config_path, control=None):
+ control=control if control is not None else {}
  config_path=config_path.resolve(strict=True);base=config_path.parent;c=yaml.safe_load(config_path.read_text())
  if not isinstance(c,dict) or c.get('schema')!='v2-prp-v1':raise ValueError('EXPECTED_SCHEMA_V2_PRP_V1')
  scene=c['scene'];inp=c['input'];task=c['task'];planner=c['planner'];alg=c['algorithms'];limits=c['limits'];output=c['output'];runtime=c['runtime'];replay=c['replay']
- allowed={'scene':{'name','frame','octomap','planning_scene','snapshot'},'input':{'stage','path','until'},'task':{'mode','source','start_q','goal'},'planner':{'id','group','allowed_time_s'},'algorithms':{'r','p0','p1'},'limits':{'profile','velocity','acceleration','jerk_soft_reference'},'output':{'root','npz','csv','plot'},'runtime':{'mode','master_uri','overlay_setup','python'},'replay':{'backend'}}
+ if task.get('mode')=='multi':
+  from . import prp_multi
+  return prp_multi.run(config_path,c)
+ allowed={'scene':{'name','frame','octomap','planning_scene','snapshot'},'input':{'stage','path','until'},'task':{'mode','source','start_q','goal','targets','dwell_s'},'planner':{'id','group','allowed_time_s'},'algorithms':{'r','p0','p1'},'limits':{'profile','velocity','acceleration','jerk_soft_reference'},'output':{'root','npz','csv','plot'},'runtime':{'mode','master_uri','overlay_setup','python'},'replay':{'backend'}}
  if set(c)-({'schema'}|set(allowed)):raise ValueError('UNSUPPORTED_CONFIG_FIELDS: '+repr(sorted(set(c)-({'schema'}|set(allowed)))))
  for name,keys in allowed.items():
   if not isinstance(c[name],dict) or set(c[name])-keys:raise ValueError('UNSUPPORTED_CONFIG_FIELDS: '+name)
@@ -66,10 +70,13 @@ def run(config_path):
    if not recorded or sha256(map_path.read_bytes()).hexdigest()!=recorded:raise ValueError('SAVED_PARENT_SCENE_MAP_MISMATCH')
    parent['config']['static_octomap']=str(map_path)
  snapshot=_path(scene['snapshot'],base).resolve(strict=True) if scene.get('snapshot') else None
+ # A caller may explicitly attest an external live scene without altering YAML.
+ if stage=='new' and snapshot is None and os.environ.get('V2_PRP_SCENE_SNAPSHOT'):
+  snapshot=Path(os.environ['V2_PRP_SCENE_SNAPSHOT']).expanduser().resolve(strict=True)
  chosen=os.environ.get('V2_CALLER_MASTER_URI') or runtime.get('master_uri') or runtime_v2.URI
  if not chosen.startswith(('http://','https://')):raise ValueError('INVALID_MASTER_URI')
  os.environ['ROS_MASTER_URI']=chosen;os.environ['V2_MASTER_URI']=chosen
- root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name='PRP-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f');run_dir=root/name;run_dir.mkdir(exist_ok=False)
+ root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name='PRP-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f');run_dir=root/name;run_dir.mkdir(exist_ok=False);control['run_dir']=str(run_dir)
  effective={'schema':c['schema'],'input_stage':inp['stage'],'input_path':str(source) if source else None,'scene_map':str(map_path),'parent_map_relocated':relocated_map,'scene_mode':scene['planning_scene'],'scene_snapshot':str(snapshot) if snapshot else None,'master_uri':chosen,'master_source':'environment' if os.environ.get('V2_CALLER_MASTER_URI') else 'config_or_default','python':sys.executable,'overlay_setup':os.environ.get('V2_EXTRA_SETUP') or None,'limits':limits,'algorithms':alg,'task':task,'output_root':str(root),'result_dir':str(run_dir),'compact_output':True,'source_config':str(config_path),'requested_config':c}
  (run_dir/'effective_config.json').write_text(json.dumps(effective,ensure_ascii=False,indent=2));print('PRP_CONFIG',json.dumps(effective,ensure_ascii=False),flush=True)
  work=run_dir/'.work';work.mkdir();result_dir=run_dir/'result';code=1
@@ -95,10 +102,15 @@ def run(config_path):
    pose={'frame_id':goal['frame'],'link_name':goal['link'],'position':goal['position_m'],'orientation_xyzw':goal['quaternion_xyzw']}
    (work/'IK').mkdir();ik=JointIK(cfg,pose);(work/'IK/target.json').write_text(json.dumps(ik.target(),indent=2));ik_result=ik.solve(task['start_q'],1);(work/'IK/result.json').write_text(json.dumps(ik_result,indent=2))
    if not ik_result['ik_feasible']:raise RuntimeError('IK_POSTERIOR_NOT_FEASIBLE')
-   plan_task={'id':'yaml_single','start_q':task['start_q'],'goal_q':ik_result['q'],'goal_tolerance':[.03,.03,.05,.05,.05,.05,.05,.05,.05]}
+   plan_task={'id':'yaml_single','start_q':task['start_q'],'goal_q':ik_result['q'],'goal_tolerance':[.0005]*9}
    stage_v2.planning(cfg,plan_task,['global.yaml','new'],out=work/'P',context_fn=lambda _:scene_info)
+   # A MoveIt joint-region success is not a Link6 task-goal success.
+   parent_file=work/'P/parent_path.json';actual=json.loads(parent_file.read_text());p_fk=ik.check(actual['path']['q'][-1]);(work/'IK/p_endpoint_fk.json').write_text(json.dumps(p_fk,indent=2));actual['planning']['task_goal_fk']=p_fk;actual['planning']['task_goal_status']='PASS' if p_fk['ik_feasible'] else 'FAIL';parent_file.write_text(json.dumps(actual,indent=2))
+   if not p_fk['ik_feasible']:raise RuntimeError('P_ENDPOINT_TASK_FK_NOT_PASS')
    command=['--parent',str(work/'P'),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
    command+=['--scene-snapshot',str(work/'scene_snapshot.bin')]
+   if control.get('rho_fallback')==36:command+=['--rho-fallback','36']
+   if control.get('signed_recovery'):command+=['--signed-recovery']
    code=prp_from_p.main(command)
    trajectory=work/'result/PRP/P1/recommended/trajectory.npz'
    if until=='g1' and trajectory.is_file():

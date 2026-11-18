@@ -51,7 +51,7 @@ def finalize(root,work,stage,source_r=None):
    data=json.loads(p.read_text());data['time_law_npz']=str(thin);data['numeric_verification']=str(out/'PRP/P0/cases/seg01/C/verification.json');p.write_text(json.dumps(data,indent=2))
  for f in ('summary.json','recommended_law.json','error.log'):_copy(pr/'P1'/f,out/'PRP/P1'/f)
  for f in ('trajectory.npz','trajectory.csv','result.json'):_copy(pr/'P1/recommended'/f,out/'PRP/P1/recommended'/f)
- for f in ('IK/result.json','IK/target.json','IK/final_fk.json','P/error.log','error.log'):_copy(work/f,out/f)
+ for f in ('IK/result.json','IK/target.json','IK/p_endpoint_fk.json','IK/final_fk.json','P/error.log','error.log'):_copy(work/f,out/f)
  # Rewrite retained descriptor paths to the final location. Keep status and
  # numerical evidence, but never leave a time-law pointer into deleted work.
  def rewrite(x):

@@ -74,8 +74,7 @@ def design(x,h,theta,n):
  return np.stack([M@(np.cos(th)[:,None]*rho),M@(np.sin(th)[:,None]*rho)],axis=1)
 
 
-def solve(path,limits):
- start=time.perf_counter();q,u,src,modes,_=classify(path);charts,stats=mode_directions(q,modes)
+def fit_profiles(q,u,charts,limits):
  grids=[];variables=[];constraints=[];objective=0
  for i,j,s in charts:
   h=u[j]-u[i];uu=np.unique(np.r_[u[i:j+1],np.linspace(u[i],u[j],1001)]);x=np.clip((uu-u[i])/h,0,1);ref=_reference_at(u,q,uu);mat=basis(x,18);c=cp.Variable((18,7));tol=np.tile(np.r_[np.pi/2,np.full(6,.1)],(len(x),1))
@@ -86,20 +85,32 @@ def solve(path,limits):
   for d in range(3):constraints.append(min(h1,h2)**d*basis([1],18,d)@variables[k]/h1**d==min(h1,h2)**d*basis([0],18,d)@variables[k+1]/h2**d)
  profile=cp.Problem(cp.Minimize(objective),constraints);profile.solve(solver='CLARABEL',max_iter=300,tol_feas=1e-9,tol_gap_abs=1e-9)
  if profile.status not in ('optimal','optimal_inaccurate') or any(c.value is None for c in variables):raise RuntimeError('PROFILE_QP_'+profile.status)
- profiles=[np.asarray(v.value) for v in variables];n=22;rhos={k:cp.Variable(n) for k,(_,_,s) in enumerate(charts) if s};cs=[];origin=cp.Constant(q[0,:2]);obj=0;edges=np.array([u[charts[0][0]]]+[u[j] for i,j,s in charts])
- for k,(i,j,s) in enumerate(charts):
-  h=edges[k+1]-edges[k];uu=np.unique(np.r_[np.linspace(edges[k],edges[k+1],2001),u[(u>=edges[k])&(u<=edges[k+1])],edges[k]+h*quintic_knots(n),edges[k]+h*quintic_knots(18)]);x=np.clip((uu-edges[k])/h,0,1);ref=_reference_at(u,q,uu)
-  if s:
-   A=design(x,h,profiles[k][:,0],n);rr=rhos[k];xy=cp.hstack([cp.reshape(origin[d]+s*A[:,d,:]@rr,(len(x),1),order='C') for d in range(2)]);origin=xy[-1,:]
-   cs.extend([rr>=0,rr[0]==0,rr[1]==0,rr[-1]==0,rr[-2]==0]);obj+=cp.sum_squares(np.diff(np.eye(n),2,axis=0)@rr)*1e-4
-  else:xy=np.ones((len(x),1))@cp.reshape(origin,(1,2),order='C')
-  cs.extend([xy-ref[:,:2]<=.0999,xy-ref[:,:2]>=-.0999])
- cs.append(origin==q[-1,:2]);problem=cp.Problem(cp.Minimize(obj),cs);problem.solve(solver='CLARABEL',max_iter=300,tol_feas=1e-9,tol_gap_abs=1e-9,tol_gap_rel=1e-9)
- if problem.status not in ('optimal','optimal_inaccurate') or any(v.value is None for v in rhos.values()):raise RuntimeError('RHO_QP_'+problem.status)
+ return [np.asarray(v.value) for v in variables],profile.status
+
+
+def solve(path,limits,rho_controls=22,rho_fallback=None):
+ if not isinstance(rho_controls,int) or rho_controls<6:raise ValueError('RHO_CONTROLS_MUST_BE_AT_LEAST_SIX')
+ start=time.perf_counter();q,u,src,modes,_=classify(path);charts,stats=mode_directions(q,modes)
+ profiles,profile_status=fit_profiles(q,u,charts,limits);attempts=[]
+ if rho_fallback is not None and (rho_controls!=22 or rho_fallback!=36):raise ValueError('UNSUPPORTED_RHO_RETRY')
+ for n in ([rho_controls,rho_fallback] if rho_fallback is not None else [rho_controls]):
+  started_rho=time.perf_counter();rhos={k:cp.Variable(n) for k,(_,_,s) in enumerate(charts) if s};cs=[];origin=cp.Constant(q[0,:2]);obj=0;edges=np.array([u[charts[0][0]]]+[u[j] for i,j,s in charts])
+  for k,(i,j,s) in enumerate(charts):
+   h=edges[k+1]-edges[k];uu=np.unique(np.r_[np.linspace(edges[k],edges[k+1],2001),u[(u>=edges[k])&(u<=edges[k+1])],edges[k]+h*quintic_knots(n),edges[k]+h*quintic_knots(18)]);x=np.clip((uu-edges[k])/h,0,1);ref=_reference_at(u,q,uu)
+   if s:
+    A=design(x,h,profiles[k][:,0],n);rr=rhos[k];xy=cp.hstack([cp.reshape(origin[d]+s*A[:,d,:]@rr,(len(x),1),order='C') for d in range(2)]);origin=xy[-1,:]
+    cs.extend([rr>=0,rr[0]==0,rr[1]==0,rr[-1]==0,rr[-2]==0]);obj+=cp.sum_squares(np.diff(np.eye(n),2,axis=0)@rr)*1e-4
+   else:xy=np.ones((len(x),1))@cp.reshape(origin,(1,2),order='C')
+   cs.extend([xy-ref[:,:2]<=.0999,xy-ref[:,:2]>=-.0999])
+  cs.append(origin==q[-1,:2]);problem=cp.Problem(cp.Minimize(obj),cs);problem.solve(solver='CLARABEL',max_iter=300,tol_feas=1e-9,tol_gap_abs=1e-9,tol_gap_rel=1e-9)
+  attempts.append({'rho_controls':n,'status':problem.status,'wall_s':time.perf_counter()-started_rho})
+  if problem.status in ('optimal','optimal_inaccurate') and all(v.value is not None for v in rhos.values()):break
+  if problem.status!='infeasible' or rho_fallback is None or n==rho_fallback:
+   error=RuntimeError('RHO_QP_'+str(problem.status));error.rho_attempts=attempts;raise error
  data={'global_u':edges,'directions':np.array([s for i,j,s in charts]),'source_indices':np.array([src[charts[0][0]]]+[src[j] for i,j,s in charts]),'start_xy':q[0,:2],'knots_theta':quintic_knots(18),'knots_rho':quintic_knots(n)}
  for k,v in enumerate(profiles):data['profile_%d'%k]=v
  for k,v in rhos.items():data['rho_%d'%k]=np.asarray(v.value)
- return data,{'wall_s':time.perf_counter()-start,'profile_status':profile.status,'rho_status':problem.status,'parent_states':len(path.q),'charts':[{'start':int(src[i]),'end':int(src[j]),'direction':int(s)} for i,j,s in charts],'xy_length':float(stats[:,0].sum()),'forward_length':float(stats[:,1].sum()),'reverse_length':float(stats[:,2].sum())},(q,u)
+ return data,{'wall_s':time.perf_counter()-start,'profile_status':profile_status,'rho_status':problem.status,'rho_controls':n,'rho_attempts':attempts,'parent_states':len(path.q),'charts':[{'start':int(src[i]),'end':int(src[j]),'direction':int(s)} for i,j,s in charts],'xy_length':float(stats[:,0].sum()),'forward_length':float(stats[:,1].sum()),'reverse_length':float(stats[:,2].sum())},(q,u)
 
 
 def verify(data,q,u,limits):

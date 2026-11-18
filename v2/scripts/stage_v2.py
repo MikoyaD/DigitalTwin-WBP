@@ -136,6 +136,12 @@ def planning(config,task,command,out=None,context_fn=None):
             record=read(capture/'capture_result.json');raw=read(capture/'parent_path.json')
             from moveit_msgs.msg import MotionPlanResponse
             response=MotionPlanResponse();response.deserialize(bytes.fromhex(record['response_hex']))
+            # Keep a small direct post-TOTG endpoint comparison, not the dense ROS response.
+            jt=response.trajectory.joint_trajectory;mt=response.trajectory.multi_dof_joint_trajectory
+            import math
+            tr=mt.points[-1].transforms[0];raw_end=[tr.translation.x,tr.translation.y,2*math.atan2(tr.rotation.z,tr.rotation.w)]+[jt.points[-1].positions[list(jt.joint_names).index(n)] for n in NAMES[3:]]
+            extracted_end=raw['q'][-1];difference=[float(a-b) for a,b in zip(extracted_end,raw_end)];difference[2]=math.atan2(math.sin(difference[2]),math.cos(difference[2]))
+            endpoint_extraction=dict(raw_response_q=raw_end,extracted_q=extracted_end,difference=difference,max_abs_difference=max(map(abs,difference)))
             state=io.BytesIO();response.trajectory_start.serialize(state)
         metadata={k:v for k,v in raw['metadata'].items() if k not in ('raw_robot_trajectory_hex','request')}
         raw['metadata']=metadata
@@ -147,7 +153,7 @@ def planning(config,task,command,out=None,context_fn=None):
                     request=payload['motion_plan_request'],start_robot_state_hex=state.getvalue().hex(),
                     planning=dict(status='PASS',reported_planning_time_s=record['reported_planning_time_s'],
                                   service_wall_s=record['front_wall_s'],error_code=record['error_code'],
-                                  endpoint_checks=record.get('endpoint_checks')),
+                                  endpoint_extraction=endpoint_extraction,endpoint_checks=record.get('endpoint_checks')),
                     scene={k:scene[k] for k in ('scene_sha256','urdf_sha256','srdf_sha256','octomap_id','octomap_data_bytes')},
                     sources=sources)
         np.savetxt(root/'parent_path.csv',np.asarray(raw['q']),fmt='%.17g',delimiter=',',

@@ -12,7 +12,7 @@ input:
   path: null                       # new 时为 null；P/R 时填文件或目录
   until: g1                        # g0 或 g1；g1 后进行最终离散碰撞
 task:
-  mode: single                     # 多目标新版链路尚未支持
+  mode: multi                      # single：单目标；multi：五目标按序执行
   source: configured_goal          # P/R 时改为 saved_parent，起点和目标填 null
   start_q: [0.4315, -7.7584, 1.7959, 0.0002, -0.0001, 0.0, 0.0, -0.0001, 0.0]
   goal:                            # 历史 joint_ik_pose_example 的原始 Link6 目标
@@ -21,6 +21,75 @@ task:
     frame: world
     position_m: [-3.2903249251830946, 6.6307645917990605, 0.774260890095927]
     quaternion_xyzw: [-0.5005972756383051, -0.4997218801892079, 0.49907847157658, 0.5006007284178224]
+  # 五目标来自 multi_5goal.yaml，顺序和完整位姿不变。
+  targets:
+  - id: '1'
+    type: link_pose
+    frame: world
+    link: Link6
+    position_m:
+    - 1.2192864721768588
+    - 0.3950952903201028
+    - 1.2281521027987377
+    quaternion_xyzw:
+    - -0.4999865096979089
+    - 0.500020453465231
+    - -0.5000458377651791
+    - 0.4999471935817301
+  - id: '2'
+    type: link_pose
+    frame: world
+    link: Link6
+    position_m:
+    - 1.1387653881361393
+    - 4.5899506294469905
+    - 1.1571231286459787
+    quaternion_xyzw:
+    - -0.685900182405853
+    - 0.171852344348467
+    - -0.1718472981466188
+    - 0.6859126895146792
+  - id: '3'
+    type: link_pose
+    frame: world
+    link: Link6
+    position_m:
+    - -3.2875155934657636
+    - 3.7839602136983252
+    - 1.2492629462731033
+    quaternion_xyzw:
+    - -0.2613329050428174
+    - -0.3100551168139488
+    - 0.6598485532669961
+    - 0.6325905658724471
+  - id: '4'
+    type: link_pose
+    frame: world
+    link: Link6
+    position_m:
+    - -2.093029625795876
+    - -9.328534288716629
+    - 1.0643485157724655
+    quaternion_xyzw:
+    - -0.7003456711342131
+    - 0.09757124566497775
+    - -0.0976546206389892
+    - 0.7003280431417899
+  - id: '5'
+    type: link_pose
+    frame: world
+    link: Link6
+    position_m:
+    - 0.12600000000273337
+    - 2.501979218678665e-06
+    - 1.3550472656814356
+    quaternion_xyzw:
+    - -0.5000005865988345
+    - 0.4999994133937311
+    - -0.5000030865963978
+    - 0.4999969133912941
+  dwell_s: 1.0
+
 planner:
   id: RRTstar                      # 新任务调用 MoveIt RRTstar
   group: whole
