@@ -1,0 +1,44 @@
+<launch>
+  <arg name="pipeline" default="ompl" />
+  <arg name="db" default="false" />
+  <arg name="db_path" default="$(find cr5_car_moveit)/default_warehouse_mongo_db" />
+  <arg name="debug" default="false" />
+  <arg name="load_robot_description" default="true"/>
+  <arg name="use_rviz" default="true" />
+
+  <arg name="moveit_controller_manager" default="simple" />
+  <arg name="fake_execution_type" default="interpolate" />
+
+  <include file="$(dirname)/move_group.launch">
+    <arg name="allow_trajectory_execution" value="true"/>
+    <arg name="moveit_controller_manager" value="$(arg moveit_controller_manager)" />
+    <arg name="fake_execution_type" value="$(arg fake_execution_type)"/>
+    <arg name="info" value="true"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="pipeline" value="$(arg pipeline)"/>
+    <arg name="load_robot_description" value="$(arg load_robot_description)"/>
+    <!-- <param name="octomap_frame" type="string" value="odom" /> 尝试在此加入  -->
+  </include>
+
+  <group ns="move_group">
+    <rosparam file="$(find cr5_car_moveit)/config/controllers.yaml" command="load"/>
+    <!-- 尝试在此加入 -->
+    <param name="octomap_frame" type="string" value="odom" />
+    <param name="octomap_resolution" type="double" value="0.05" />
+    <param name="max_range" type="double" value="5.0" />
+
+
+    <!-- 尝试在此加入 -->
+    <param name="workspace_bounds" value="100.0" />
+    <param name="default_workspace_bounds" value="100.0" />
+  </group>
+
+  <include file="$(dirname)/moveit_rviz.launch" if="$(arg use_rviz)">
+    <arg name="rviz_config" value="$(dirname)/moveit.rviz"/>
+    <arg name="debug" value="$(arg debug)"/>
+  </include>
+
+  <include file="$(dirname)/default_warehouse_db.launch" if="$(arg db)">
+    <arg name="moveit_warehouse_database_path" value="$(arg db_path)"/>
+  </include>
+</launch>

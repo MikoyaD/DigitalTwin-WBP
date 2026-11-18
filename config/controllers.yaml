@@ -1,0 +1,25 @@
+controller_list:
+  # 底盘控制器 (连接我们的 Python 脚本)
+  - name: base_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - world_car
+
+  # 机械臂控制器 (为了不报错，我们也得假装有一个机械臂控制器)
+  # 注意：如果此时没有真实的机械臂驱动，你也需要为机械臂写一个类似的 Python 脚本
+  # 或者暂时让 MoveIt 使用 fake 控制器处理机械臂 (比较复杂)，
+  # 最简单的办法是先把机械臂也指向这个 Python 脚本(如果脚本支持)或者忽略。
+  # 这里我们先配置上，假设你只测试底盘，或者后续会加机械臂驱动。
+  - name: arm_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+      - joint6

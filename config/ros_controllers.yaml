@@ -1,0 +1,52 @@
+# # 这里的配置告诉 MoveIt 有哪些控制器可用
+# use_controller_manager: false  # 【关键】告诉 MoveIt 别去查岗，直接用
+# controller_list:
+#   - name: arm_controller
+#     action_ns: follow_joint_trajectory
+#     type: FollowJointTrajectory
+#     default: true
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#       - joint6
+
+# # 【新增】底盘控制器配置
+#   - name: base_controller
+#     action_ns: follow_joint_trajectory
+#     type: FollowJointTrajectory
+#     default: true
+#     joints:
+#       - world_car  # 这是虚拟关节名称，必须与 SRDF 中一致
+
+# Gazebo 物理引擎的底层控制器配置
+
+# 1. 关节状态发布器 (负责告诉外界各个电机的当前角度)
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 50
+
+# 2. 机械臂轨迹控制器 (负责接收命令并驱动电机)
+arm_controller:
+  type: position_controllers/JointTrajectoryController
+  joints:
+    - joint1
+    - joint2
+    - joint3
+    - joint4
+    - joint5
+    - joint6
+  constraints:
+    goal_time: 0.6
+    stopped_velocity_tolerance: 0.05
+    joint1: {trajectory: 0.1, goal: 0.1}
+    joint2: {trajectory: 0.1, goal: 0.1}
+    joint3: {trajectory: 0.1, goal: 0.1}
+    joint4: {trajectory: 0.1, goal: 0.1}
+    joint5: {trajectory: 0.1, goal: 0.1}
+    joint6: {trajectory: 0.1, goal: 0.1}
+  stop_trajectory_duration: 0.5
+  state_publish_rate: 25
+  action_monitor_rate: 10

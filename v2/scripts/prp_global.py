@@ -1,0 +1,140 @@
+"""Minimal v2-prp-v1 configuration adapter for saved P or signed R."""
+import datetime,json,os,shutil,sys,traceback,subprocess,tempfile,math
+from pathlib import Path
+import yaml
+from . import runtime_v2
+
+
+def _path(value,base):
+ if not isinstance(value,str) or not value:raise ValueError('CONFIG_PATH_REQUIRED')
+ prefix='package://cr5_car_moveit/'
+ if value.startswith(prefix):return (runtime_v2.PACKAGE/value[len(prefix):]).resolve()
+ if value.startswith('package://'):raise ValueError('UNSUPPORTED_PACKAGE_URI: '+value)
+ p=Path(os.path.expanduser(value));return (p if p.is_absolute() else base/p).resolve()
+
+
+def run(config_path):
+ config_path=config_path.resolve(strict=True);base=config_path.parent;c=yaml.safe_load(config_path.read_text())
+ if not isinstance(c,dict) or c.get('schema')!='v2-prp-v1':raise ValueError('EXPECTED_SCHEMA_V2_PRP_V1')
+ scene=c['scene'];inp=c['input'];task=c['task'];planner=c['planner'];alg=c['algorithms'];limits=c['limits'];output=c['output'];runtime=c['runtime'];replay=c['replay']
+ allowed={'scene':{'name','frame','octomap','planning_scene','snapshot'},'input':{'stage','path','until'},'task':{'mode','source','start_q','goal'},'planner':{'id','group','allowed_time_s'},'algorithms':{'r','p0','p1'},'limits':{'profile','velocity','acceleration','jerk_soft_reference'},'output':{'root','npz','csv','plot'},'runtime':{'mode','master_uri','overlay_setup','python'},'replay':{'backend'}}
+ if set(c)-({'schema'}|set(allowed)):raise ValueError('UNSUPPORTED_CONFIG_FIELDS: '+repr(sorted(set(c)-({'schema'}|set(allowed)))))
+ for name,keys in allowed.items():
+  if not isinstance(c[name],dict) or set(c[name])-keys:raise ValueError('UNSUPPORTED_CONFIG_FIELDS: '+name)
+ stage=inp.get('stage')
+ if stage not in ('new','P','R'):raise ValueError('UNSUPPORTED_INPUT_STAGE')
+ if task.get('mode')!='single':raise ValueError('UNSUPPORTED_TASK_MODE')
+ if planner.get('id')!='RRTstar' or planner.get('group')!='whole':raise ValueError('UNSUPPORTED_PLANNER')
+ if stage=='new':
+  if inp.get('path') is not None or task.get('source')!='configured_goal':raise ValueError('NEW_REQUIRES_CONFIGURED_GOAL_AND_NULL_PATH')
+  goal=task.get('goal');start=task.get('start_q');duration=planner.get('allowed_time_s')
+  def vec(x,n):return isinstance(x,list) and len(x)==n and all(isinstance(i,(int,float)) and not isinstance(i,bool) and math.isfinite(i) for i in x)
+  if not vec(start,9) or not isinstance(goal,dict) or set(goal)!={'type','link','frame','position_m','quaternion_xyzw'} or goal['type']!='link_pose' or goal['link']!='Link6' or goal['frame']!='world' or not vec(goal['position_m'],3) or not vec(goal['quaternion_xyzw'],4) or abs(sum(v*v for v in goal['quaternion_xyzw'])-1)>2e-6:raise ValueError('INVALID_CONFIGURED_GOAL')
+  if not isinstance(duration,(int,float)) or isinstance(duration,bool) or not 0<duration<=120:raise ValueError('INVALID_PLANNING_TIME')
+ else:
+  if task.get('source')!='saved_parent' or task.get('start_q') is not None or task.get('goal') is not None:raise ValueError('SAVED_PARENT_CANNOT_OVERRIDE_GOAL')
+  if planner.get('allowed_time_s') is not None:raise ValueError('SAVED_PARENT_CANNOT_REPLAN')
+ if alg!={'r':'signed_v1','p0':'a_c_v1','p1':'formal_v1'}:raise ValueError('UNSUPPORTED_ALGORITHM_COMBINATION')
+ if limits.get('profile')!='V2_NINE_DOF_VA_ONLY' or limits.get('velocity')!=[.5]*9 or limits.get('acceleration')!=[1.]*9:raise ValueError('UNSUPPORTED_LIMITS_PROFILE')
+ if limits.get('jerk_soft_reference',5.0)!=5.0:raise ValueError('UNSUPPORTED_JERK_REFERENCE: formal P1 uses 5 as a soft search/selection reference')
+ if scene.get('name')!='warehouse' or scene.get('frame')!='world' or scene.get('planning_scene') not in ('current','snapshot'):raise ValueError('UNSUPPORTED_SCENE')
+ if scene.get('planning_scene')=='snapshot' and not scene.get('snapshot'):raise ValueError('SCENE_SNAPSHOT_REQUIRED')
+ if scene.get('planning_scene')=='current' and scene.get('snapshot') is not None:raise ValueError('SNAPSHOT_REQUIRES_SNAPSHOT_MODE')
+ if output.get('npz') is not True or output.get('csv')!='compact' or not isinstance(output.get('plot'),bool):raise ValueError('UNSUPPORTED_OUTPUT: npz true and compact CSV required')
+ if runtime.get('mode')!='auto':raise ValueError('UNSUPPORTED_RUNTIME_MODE')
+ if replay.get('backend')!='none':raise ValueError('UNSUPPORTED_REPLAY_BACKEND')
+ until=inp.get('until')
+ if until not in ('g0','g1'):raise ValueError('UNSUPPORTED_UNTIL')
+ if output['plot'] and until!='g1':raise ValueError('PLOT_REQUIRES_G1')
+ source=None;parent=None;relocated_map=False
+ map_path=_path(scene['octomap'],base).resolve(strict=True)
+ if stage!='new':
+  source=_path(inp['path'],base)
+  if source.is_file() and source.name in ('parent_path.json','geometry.json'):source=source.parent
+  if not (source/'parent_path.json').is_file():raise ValueError('PARENT_PATH_MISSING')
+  if inp['stage']=='R' and not (source/'geometry.json').is_file():raise ValueError('SIGNED_R_GEOMETRY_MISSING')
+  parent=json.loads((source/'parent_path.json').read_text());profile=parent.get('experiment_limit_profile',parent['config'].get('constraint_profile',{}))
+  disabled={'xy_speed','xy_acceleration','tangential_acceleration','wheel_velocity','wheel_acceleration','spin_jerk'};enabled=profile.get('enabled',{})
+  if parent.get('planner_id')!='RRTstar' or profile.get('identity')!=limits['profile'] or profile.get('velocity')!=limits['velocity'] or profile.get('acceleration')!=limits['acceleration'] or set(enabled)!=disabled or any(enabled.values()):raise ValueError('SAVED_PARENT_PLANNER_OR_LIMITS_MISMATCH')
+  parent_map=(runtime_v2.PACKAGE/parent['config']['static_octomap']).resolve()
+  relocated_map=map_path!=parent_map
+  if relocated_map:
+   # A relocated saved P is usable only if its recorded map identity agrees;
+   # comparing filenames or simply trusting the new configuration is unsafe.
+   from hashlib import sha256
+   recorded=parent.get('sources',{}).get('map',{}).get('sha256')
+   if not recorded or sha256(map_path.read_bytes()).hexdigest()!=recorded:raise ValueError('SAVED_PARENT_SCENE_MAP_MISMATCH')
+   parent['config']['static_octomap']=str(map_path)
+ snapshot=_path(scene['snapshot'],base).resolve(strict=True) if scene.get('snapshot') else None
+ chosen=os.environ.get('V2_CALLER_MASTER_URI') or runtime.get('master_uri') or runtime_v2.URI
+ if not chosen.startswith(('http://','https://')):raise ValueError('INVALID_MASTER_URI')
+ os.environ['ROS_MASTER_URI']=chosen;os.environ['V2_MASTER_URI']=chosen
+ root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name='PRP-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f');run_dir=root/name;run_dir.mkdir(exist_ok=False)
+ effective={'schema':c['schema'],'input_stage':inp['stage'],'input_path':str(source) if source else None,'scene_map':str(map_path),'parent_map_relocated':relocated_map,'scene_mode':scene['planning_scene'],'scene_snapshot':str(snapshot) if snapshot else None,'master_uri':chosen,'master_source':'environment' if os.environ.get('V2_CALLER_MASTER_URI') else 'config_or_default','python':sys.executable,'overlay_setup':os.environ.get('V2_EXTRA_SETUP') or None,'limits':limits,'algorithms':alg,'task':task,'output_root':str(root),'result_dir':str(run_dir),'compact_output':True,'source_config':str(config_path),'requested_config':c}
+ (run_dir/'effective_config.json').write_text(json.dumps(effective,ensure_ascii=False,indent=2));print('PRP_CONFIG',json.dumps(effective,ensure_ascii=False),flush=True)
+ work=run_dir/'.work';work.mkdir();result_dir=run_dir/'result';code=1
+ try:
+  if stage=='new':
+   from . import prp_from_r,prp_from_p,stage_v2
+   cfg=yaml.safe_load((runtime_v2.PACKAGE/'v2/configs/v2_workspace_single_goal_9d_va_only.yaml').read_text())
+   cfg['static_octomap']=str(map_path);cfg['planner_id']='RRTstar';cfg['group_name']='whole';cfg['allowed_planning_time_s']=float(planner['allowed_time_s']);cfg['master_uri']=chosen
+   prp_from_r.ensure_master(chosen,cfg)
+   # A newly planned P must record the same complete live scene used by IK,
+   # MoveIt and final collision checking; do not assume a nonempty map matches.
+   with tempfile.TemporaryDirectory(prefix='prp_scene_') as tmp:
+    done=subprocess.run([sys.executable,'-B','-m','v2.scripts.ros_probe','--output',tmp,'--timeout',str(cfg.get('service_timeout_s',45))],cwd=str(runtime_v2.PACKAGE),capture_output=True,text=True)
+    if done.returncode:raise RuntimeError('SCENE_PROBE_FAILED: '+done.stderr[-2000:])
+    d=Path(tmp);scene_info=json.loads((d/'scene_probe.json').read_text())
+    if (d/'robot_description.urdf').read_text()!=(runtime_v2.PACKAGE/'config/gazebo_combined_robot.urdf').read_text() or (d/'robot_description.srdf').read_text()!=(runtime_v2.PACKAGE/'config/combined_robot.srdf').read_text():raise RuntimeError('ROBOT_MODEL_MISMATCH')
+    (work/'scene_snapshot.bin').write_bytes((d/'scene_snapshot.bin').read_bytes())
+    runtime_state=runtime_v2.status() if chosen.rstrip('/')==runtime_v2.URI.rstrip('/') else {'status':'EXTERNAL'}
+    if runtime_state.get('status')=='READY':
+     if Path(runtime_state['map']).resolve()!=map_path:raise RuntimeError('WAREHOUSE_RUNTIME_MAP_MISMATCH')
+    elif not snapshot or snapshot.read_bytes()!=(d/'scene_snapshot.bin').read_bytes():raise RuntimeError('EXTERNAL_SCENE_REQUIRES_MATCHING_EXPLICIT_SNAPSHOT')
+   from .joint_ik import JointIK
+   pose={'frame_id':goal['frame'],'link_name':goal['link'],'position':goal['position_m'],'orientation_xyzw':goal['quaternion_xyzw']}
+   (work/'IK').mkdir();ik=JointIK(cfg,pose);(work/'IK/target.json').write_text(json.dumps(ik.target(),indent=2));ik_result=ik.solve(task['start_q'],1);(work/'IK/result.json').write_text(json.dumps(ik_result,indent=2))
+   if not ik_result['ik_feasible']:raise RuntimeError('IK_POSTERIOR_NOT_FEASIBLE')
+   plan_task={'id':'yaml_single','start_q':task['start_q'],'goal_q':ik_result['q'],'goal_tolerance':[.03,.03,.05,.05,.05,.05,.05,.05,.05]}
+   stage_v2.planning(cfg,plan_task,['global.yaml','new'],out=work/'P',context_fn=lambda _:scene_info)
+   command=['--parent',str(work/'P'),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
+   command+=['--scene-snapshot',str(work/'scene_snapshot.bin')]
+   code=prp_from_p.main(command)
+   trajectory=work/'result/PRP/P1/recommended/trajectory.npz'
+   if until=='g1' and trajectory.is_file():
+    import numpy as np
+    with np.load(trajectory,allow_pickle=False) as z:fk=ik.check(z['q'][-1])
+    (work/'IK/final_fk.json').write_text(json.dumps(fk,indent=2))
+    if not fk['ik_feasible']:
+     for f in (work/'result/result.json',work/'result/PRP/result.json'):
+      if f.is_file():
+       d=json.loads(f.read_text());d['status']='FINAL_TARGET_FK_FAIL';d['final_fk']=fk;f.write_text(json.dumps(d,indent=2))
+     code=1;raise RuntimeError('FINAL_TARGET_FK_NOT_PASS')
+  elif stage=='P':
+   from . import prp_from_p
+   if relocated_map:
+    derived=work/'P_input';derived.mkdir();(derived/'parent_path.json').write_text(json.dumps(parent,indent=2));source=derived
+   command=['--parent',str(source),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
+   if snapshot:command+=['--scene-snapshot',str(snapshot)]
+   code=prp_from_p.main(command)
+  else:
+   staged=work/'R_input';staged.mkdir()
+   if relocated_map:(staged/'parent_path.json').write_text(json.dumps(parent,indent=2))
+   else:shutil.copyfile(source/'parent_path.json',staged/'parent_path.json')
+   geo=json.loads((source/'geometry.json').read_text());raw=Path(geo['signed_npz'])
+   resolved=((source/'candidate.npz') if raw.is_absolute() and not raw.exists() and raw.name=='candidate.npz' and (source/'candidate.npz').is_file() else raw if raw.is_absolute() else source/raw).resolve(strict=True)
+   geo['signed_npz']=str(resolved);(staged/'geometry.json').write_text(json.dumps(geo,indent=2))
+   from . import prp_from_r
+   command=['--signed-r',str(staged),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
+   if snapshot:command+=['--scene-snapshot',str(snapshot)]
+   code=prp_from_r.main(command)
+ except Exception:
+  (work/'error.log').write_text(traceback.format_exc());print(traceback.format_exc(),file=sys.stderr,flush=True);code=1
+ from . import prp_compact
+ storage=prp_compact.finalize(run_dir,work,stage)
+ if storage['status']!='PASS':code=1
+ csv=result_dir/'PRP/P1/recommended/trajectory.csv'
+ if output['plot'] and csv.is_file():
+  from .plot_trajectory import draw_one
+  draw_one(csv,run_dir/'plots')
+ print('PRP_GLOBAL_RESULT',str(result_dir),'exit',code,'storage',json.dumps(storage),flush=True);return code

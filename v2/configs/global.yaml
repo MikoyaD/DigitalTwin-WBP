@@ -1,0 +1,48 @@
+# V2-PRP：单目标可从新规划、已保存 P 或已冻结的 Signed R 开始。
+# 不指定 --until：./v2/scripts/plan_v2.sh --config v2/configs/global.yaml
+schema: v2-prp-v1
+scene:
+  name: warehouse                  # 本版仅支持仓储场景
+  frame: world                     # 规划及机器人底盘的世界坐标系
+  octomap: package://cr5_car_moveit/map/warehouse_cropped.bt
+  planning_scene: current          # current 取当前场景；snapshot 比对指定快照
+  snapshot: null                   # planning_scene 为 snapshot 时填写文件
+input:
+  stage: new                       # new：新规划；P：保存父路径；R：保存 Signed R
+  path: null                       # new 时为 null；P/R 时填文件或目录
+  until: g1                        # g0 或 g1；g1 后进行最终离散碰撞
+task:
+  mode: single                     # 多目标新版链路尚未支持
+  source: configured_goal          # P/R 时改为 saved_parent，起点和目标填 null
+  start_q: [0.4315, -7.7584, 1.7959, 0.0002, -0.0001, 0.0, 0.0, -0.0001, 0.0]
+  goal:                            # 历史 joint_ik_pose_example 的原始 Link6 目标
+    type: link_pose
+    link: Link6
+    frame: world
+    position_m: [-3.2903249251830946, 6.6307645917990605, 0.774260890095927]
+    quaternion_xyzw: [-0.5005972756383051, -0.4997218801892079, 0.49907847157658, 0.5006007284178224]
+planner:
+  id: RRTstar                      # 新任务调用 MoveIt RRTstar
+  group: whole
+  allowed_time_s: 5.0              # 保存 P/R 续算时改为 null
+algorithms:
+  r: signed_v1
+  p0: a_c_v1
+  p1: formal_v1
+limits:
+  profile: V2_NINE_DOF_VA_ONLY
+  velocity: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+  acceleration: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  jerk_soft_reference: 5.0        # 正式 P1 固定的软搜索/筛选参考，不是硬限制
+output:
+  root: ../outputs/prp_yaml        # 相对本 YAML 目录；每次创建独立子目录
+  npz: true                        # 高密度数值结果和完整时间律
+  csv: compact                     # 只选源行的展示 CSV，不替代验收
+  plot: false                      # true 时绘制单目标完整时间轨迹
+runtime:
+  mode: auto                       # 复用可用 Master；必要时按 V2 方式启动
+  master_uri: http://127.0.0.1:11411  # 环境变量 V2_MASTER_URI/ROS_MASTER_URI 优先
+  overlay_setup: null              # 额外 MoveIt overlay 的 setup.bash；可留空
+  python: /usr/bin/python3         # ROS Noetic 同一解释器及其子进程
+replay:
+  backend: none                    # Gazebo/Isaac 后端本版尚不支持

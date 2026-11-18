@@ -1,0 +1,13 @@
+<launch>
+  <include file="$(find aws_robomaker_small_warehouse_world)/launch/no_roof_small_warehouse.launch">
+    <arg name="gui" value="true"/>
+  </include>
+
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find cr5_car_moveit)/config/gazebo_combined_robot.urdf'" />
+
+  <node name="spawn_robot" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model combined_robot -x 0.0 -y 0.0 -z 0.1" />
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+  <!-- <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" /> -->
+
+  </launch>

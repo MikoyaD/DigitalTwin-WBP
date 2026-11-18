@@ -1,0 +1,30 @@
+# 以下是配置实时相机  experiment.launch中加载八叉树地图  但相机实时生成octomap 全局静态地图被相机的实时局部地图覆盖并擦除了
+# 为了不影响之前的demo demo_gazebo 等使用，在experiment.launch中覆盖sensors参数 使得不影响全局静态地图读取
+sensors:
+  - sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+    point_cloud_topic: /realsense/depth/points_no_ground
+    max_range: 5.0
+    # 点云降采样
+    # 1 表示每个点都处理。4 表示每 4 个点取 1 个。
+    point_subsample: 1 
+    padding_offset: 0.15
+    padding_scale: 1.0
+    
+    # point_subsample: 1
+    # padding_offset: 0.25
+    # padding_scale: 1.0
+    max_update_rate: 1.0
+    filtered_cloud_topic: filtered_cloud
+    # 【新增】滤除地面参数
+    # 任何 Z 坐标小于 0.1 (10cm) 的点云数据都不会进入 Octomap
+    filter_ground: true
+    ground_filter_distance: 0.2  # 地面容差
+    ground_filter_plane_distance: 0
+    #min_height: 0.1 # 许多 MoveIt 版本支持直接设置最小高度
+    filter_ground: false #没用，关了
+
+
+# sensors: []
+# # - sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+# #   point_cloud_topic: /realsense/depth/points_no_ground
+# # ... (后面的全部注释掉)

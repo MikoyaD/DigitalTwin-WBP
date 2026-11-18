@@ -1,0 +1,135 @@
+version: 1
+status: exploratory_real_scene_preflight
+master_uri: http://127.0.0.1:11322
+service_timeout_s: 45
+planner_id: RRTstar
+group_name: whole
+allowed_planning_time_s: 5.0
+velocity_scaling: 1.0
+acceleration_scaling: 1.0
+input_stage: post_TOTG
+frame_id: world
+static_octomap: map/warehouse_cropped.bt
+waypoints_source: map/waypoints.json
+tasks:
+- id: single_goal_05
+  start_q:
+  - 0.4315
+  - -7.7584
+  - 1.7959
+  - 0.0002
+  - -0.0001
+  - 0.0
+  - 0.0
+  - -0.0001
+  - 0.0
+  goal_q:
+  - -3.0931
+  - 6.6455
+  - 3.1291
+  - -0.7799
+  - 0.323
+  - -2.494
+  - 2.1701
+  - 0.78
+  - 0.0
+  goal_tolerance:
+  - 0.03
+  - 0.03
+  - 0.05
+  - 0.05
+  - 0.05
+  - 0.05
+  - 0.05
+  - 0.05
+  - 0.05
+  provenance: User supplied prior single-goal states; tolerances inherited from V2
+    template, not proven identical to historical experiment
+research_limits:
+  xy_speed:
+    value: 0.5
+    unit: m/s
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  xy_acceleration:
+    value: 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  tangential_acceleration:
+    value: 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  wheel_velocity:
+    value:
+    - 8.333333333333334
+    - 8.333333333333334
+    unit: rad/s
+    kind: research_limit
+    source: 0.5 m/s wheel rim research setting divided by model radius 0.06 m
+  wheel_acceleration:
+    value:
+    - 8.333333333333334
+    - 8.333333333333334
+    unit: rad/s^2
+    kind: research_limit
+    source: 0.5 m/s^2 wheel rim research setting divided by model radius 0.06 m
+  spin_jerk:
+    value: 2.0
+    unit: rad/s^3
+    kind: research_limit
+    source: V2 design section 7.2 research setting not hardware
+backend_limits:
+  arm_velocity:
+    value:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    unit: rad/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  arm_acceleration:
+    value:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    unit: rad/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  angular_velocity:
+    value: 0.5
+    unit: rad/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  angular_acceleration:
+    value: 0.5
+    unit: rad/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  xy_component_velocity:
+    value:
+    - 0.5
+    - 0.5
+    unit: m/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  xy_component_acceleration:
+    value:
+    - 0.5
+    - 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification

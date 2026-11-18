@@ -1,0 +1,17 @@
+# sensors:
+#   - sensor_plugin: occupancy_map_monitor/OctomapUpdater  # 关键：换成直接读取八叉树的插件
+#     octomap_path: /home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse.bt  # 绝对路径
+#     max_range: 100.0
+
+
+sensors:
+  - sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+    # 读取 load_map.launch 发布的话题
+    point_cloud_topic: /octomap_point_cloud_centers
+    max_range: 100.0
+    point_subsample: 1
+    padding_offset: 0.05
+    padding_scale: 1.0
+    max_update_rate: 1.0
+    filtered_cloud_topic: filtered_cloud
+    filter_ground: false

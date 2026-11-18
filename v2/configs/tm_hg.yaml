@@ -1,0 +1,3 @@
+algorithm: V2-TM-HG
+profile_config: v2/configs/v2_workspace_single_goal_9d_va_only.yaml
+candidate_policy: all_explicit_then_bounded_local_then_verified_fast_tail

@@ -1,0 +1,128 @@
+
+<launch>
+  <include file="$(find cr5_car_moveit)/launch/demo_in_warehouse.launch" />
+
+  <rosparam file="$(find cr5_car_moveit)/config/ros_controllers.yaml" command="load"/>
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller arm_controller" />
+
+
+  <!-- 相对位置读不出地图  尝试用绝对位置 -->
+  <!-- <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="$(find cr5_car_moveit)/map/warehouse.bt"> -->
+  
+  <!-- <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse.bt">
+    <param name="frame_id" type="string" value="odom" />
+    <param name="resolution" value="0.1" />
+    <remap from="cloud_in" to="/dummy_cloud" />
+  </node> -->
+  <!-- resolution控制体素分辨率 调高可使方块变大边少，减少卡顿 -->
+
+  <!-- <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker">
+    <param name="map_file" value="$(find cr5_car_moveit)/map/warehouse.bt" />
+    <param name="frame_id" type="string" value="odom" />
+    <param name="resolution" value="0.1" />
+    <remap from="cloud_in" to="/dummy_cloud" />
+  </node> -->
+
+<node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" 
+        args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse.bt"
+        launch-prefix="bash -c 'sleep 5; $0 $@' ">
+    <param name="frame_id" type="string" value="odom" />
+    <param name="resolution" value="0.1" />
+  </node>
+
+  <include file="$(find cr5_car_moveit)/launch/demo.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="moveit_controller_manager" value="simple" />
+    <arg name="fake_execution_type" value="false"/>
+  </include>
+
+  <rosparam file="$(find cr5_car_moveit)/config/controllers.yaml" command="load"/>
+
+  <group ns="move_group">
+    <rosparam command="load" file="$(find cr5_car_moveit)/config/sensors_static_map.yaml" />
+  </group>
+
+  <!-- 二选一  非理想和理想情况 -->
+  <!-- <node pkg="cr5_car_moveit" type="base_trajectory_bridge.py" name="traj_bridge" output="screen" /> -->
+  <node pkg="cr5_car_moveit" type="ideal_trajectory_bridge.py" name="ideal_traj_bridge" output="screen" />
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_odom" args="0 0 0 0 0 0 world odom" />
+  
+</launch>
+
+
+
+
+
+
+<launch>
+  <include file="$(find cr5_car_moveit)/launch/demo_in_warehouse.launch" />
+
+  <rosparam file="$(find cr5_car_moveit)/config/ros_controllers.yaml" command="load"/>
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller arm_controller" />
+  
+  <node pkg="pcl_ros" type="pcd_to_pointcloud" name="visual_map_publisher" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse.pcd 0.2">
+  <param name="frame_id" type="string" value="odom" />
+  <remap from="cloud_pcd" to="/visual_hologram_map" />
+  </node>
+
+  <!-- 改args 即选八叉树地图 -->
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse_cropped.bt">
+    <param name="frame_id" type="string" value="odom" />
+  </node>
+
+  <node pkg="cr5_car_moveit" type="load_static_octomap.py" name="load_static_octomap" output="screen" />
+
+  <remap from="/realsense/depth/points_no_ground" to="/void_blackhole_cloud" />
+
+  <include file="$(find cr5_car_moveit)/launch/demo.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="moveit_controller_manager" value="simple" />
+    <arg name="fake_execution_type" value="false"/>
+  </include>
+
+  <rosparam file="$(find cr5_car_moveit)/config/controllers.yaml" command="load"/>
+  
+  <!-- 控制脚本二选一  非理想和理想情况 -->
+  <!-- <node pkg="cr5_car_moveit" type="base_trajectory_bridge.py" name="traj_bridge" output="screen" /> -->
+  <node pkg="cr5_car_moveit" type="ideal_trajectory_bridge.py" name="ideal_traj_bridge" output="screen" />
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_odom" args="0 0 0 0 0 0 world odom" />
+</launch>
+
+
+
+
+
+
+
+
+
+
+<launch>
+  <include file="$(find cr5_car_moveit)/launch/demo_in_warehouse.launch" />
+
+  <rosparam file="$(find cr5_car_moveit)/config/ros_controllers.yaml" command="load"/>
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller arm_controller" />
+  <!-- 改args 即选八叉树地图 -->
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse_cropped.bt">
+    <param name="frame_id" type="string" value="odom" />
+  </node>
+
+  <node pkg="cr5_car_moveit" type="load_static_octomap.py" name="load_static_octomap" output="screen" />
+
+  <include file="$(find cr5_car_moveit)/launch/demo.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="moveit_controller_manager" value="simple" />
+    <arg name="fake_execution_type" value="false"/>
+  </include>
+
+  <rosparam file="$(find cr5_car_moveit)/config/controllers.yaml" command="load"/>
+
+  <node pkg="cr5_car_moveit" type="ideal_trajectory_bridge.py" name="ideal_traj_bridge" output="screen" />
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_odom" args="0 0 0 0 0 0 world odom" />
+</launch>
+
+
+

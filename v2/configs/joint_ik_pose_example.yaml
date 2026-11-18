@@ -1,0 +1,177 @@
+version: 1
+status: exploratory_real_scene_preflight
+master_uri: http://127.0.0.1:11324
+service_timeout_s: 45
+planner_id: RRTstar
+group_name: whole
+allowed_planning_time_s: 5.0
+velocity_scaling: 1.0
+acceleration_scaling: 1.0
+input_stage: post_TOTG
+frame_id: world
+static_octomap: map/warehouse_cropped.bt
+waypoints_source: map/waypoints.json
+tasks:
+- id: joint_ik_pose
+  start_q:
+  - 0.4315
+  - -7.7584
+  - 1.7959
+  - 0.0002
+  - -0.0001
+  - 0.0
+  - 0.0
+  - -0.0001
+  - 0.0
+  goal_tolerance:
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  provenance: Known reachable pose from JOINT_IK_PILOT_20261110; research 0.002 per-joint
+    target tolerance
+  pose_goal:
+    frame_id: world
+    link_name: Link6
+    position:
+    - -3.2903249251830946
+    - 6.6307645917990605
+    - 0.774260890095927
+    orientation_xyzw:
+    - -0.5005972756383051
+    - -0.4997218801892079
+    - 0.49907847157658
+    - 0.5006007284178224
+research_limits:
+  xy_speed:
+    value: 0.5
+    unit: m/s
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  xy_acceleration:
+    value: 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  tangential_acceleration:
+    value: 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  wheel_velocity:
+    value:
+    - 8.333333333333334
+    - 8.333333333333334
+    unit: rad/s
+    kind: research_limit
+    source: 0.5 m/s wheel rim research setting divided by model radius 0.06 m
+  wheel_acceleration:
+    value:
+    - 8.333333333333334
+    - 8.333333333333334
+    unit: rad/s^2
+    kind: research_limit
+    source: 0.5 m/s^2 wheel rim research setting divided by model radius 0.06 m
+  spin_jerk:
+    value: 2.0
+    unit: rad/s^3
+    kind: research_limit
+    source: V2 design section 7.2 research setting not hardware
+backend_limits:
+  arm_velocity:
+    value:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    unit: rad/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  arm_acceleration:
+    value:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    unit: rad/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  angular_velocity:
+    value: 0.5
+    unit: rad/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  angular_acceleration:
+    value: 0.5
+    unit: rad/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  xy_component_velocity:
+    value:
+    - 0.5
+    - 0.5
+    unit: m/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  xy_component_acceleration:
+    value:
+    - 0.5
+    - 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+workspace:
+  frame_id: world
+  min_corner:
+  - -20.0
+  - -20.0
+  - -2.0
+  max_corner:
+  - 20.0
+  - 20.0
+  - 5.0
+default_workspace_bounds: 40.0
+constraint_profile:
+  identity: V2_NINE_DOF_VA_ONLY
+  velocity:
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  acceleration:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  enabled:
+    xy_speed: false
+    xy_acceleration: false
+    tangential_acceleration: false
+    wheel_velocity: false
+    wheel_acceleration: false
+    spin_jerk: false

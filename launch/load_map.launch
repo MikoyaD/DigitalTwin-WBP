@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="$(find cr5_car_moveit)/maps/warehouse.bt">
+    <param name="frame_id" type="string" value="world" />
+    <remap from="cloud_in" to="/dummy_cloud" />
+  </node>
+</launch>

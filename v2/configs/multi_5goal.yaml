@@ -1,0 +1,231 @@
+version: 1
+status: exploratory_real_scene_preflight
+master_uri: http://127.0.0.1:11324
+service_timeout_s: 45
+planner_id: RRTstar
+group_name: whole
+allowed_planning_time_s: 5.0
+velocity_scaling: 1.0
+acceleration_scaling: 1.0
+input_stage: post_TOTG
+frame_id: world
+static_octomap: map/warehouse_cropped.bt
+waypoints_source: map/waypoints.json
+tasks:
+- id: multi_start
+  start_q:
+  - 0.4315
+  - -7.7584
+  - 1.7959
+  - 0.0002
+  - -0.0001
+  - 0.0
+  - 0.0
+  - -0.0001
+  - 0.0
+  goal_tolerance:
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  - 0.002
+  provenance: Known reachable pose from JOINT_IK_PILOT_20261110; research 0.002 per-joint
+    target tolerance
+research_limits:
+  xy_speed:
+    value: 0.5
+    unit: m/s
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  xy_acceleration:
+    value: 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  tangential_acceleration:
+    value: 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: V2 design section 7.2 simulation research setting
+  wheel_velocity:
+    value:
+    - 8.333333333333334
+    - 8.333333333333334
+    unit: rad/s
+    kind: research_limit
+    source: 0.5 m/s wheel rim research setting divided by model radius 0.06 m
+  wheel_acceleration:
+    value:
+    - 8.333333333333334
+    - 8.333333333333334
+    unit: rad/s^2
+    kind: research_limit
+    source: 0.5 m/s^2 wheel rim research setting divided by model radius 0.06 m
+  spin_jerk:
+    value: 2.0
+    unit: rad/s^3
+    kind: research_limit
+    source: V2 design section 7.2 research setting not hardware
+backend_limits:
+  arm_velocity:
+    value:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    unit: rad/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  arm_acceleration:
+    value:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    unit: rad/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  angular_velocity:
+    value: 0.5
+    unit: rad/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  angular_acceleration:
+    value: 0.5
+    unit: rad/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  xy_component_velocity:
+    value:
+    - 0.5
+    - 0.5
+    unit: m/s
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+  xy_component_acceleration:
+    value:
+    - 0.5
+    - 0.5
+    unit: m/s^2
+    kind: research_limit
+    source: User requested 0.5 research cap; checked against existing URDF/YAML at
+      scaling=1, not hardware verification
+workspace:
+  frame_id: world
+  min_corner:
+  - -20.0
+  - -20.0
+  - -2.0
+  max_corner:
+  - 20.0
+  - 20.0
+  - 5.0
+default_workspace_bounds: 40.0
+constraint_profile:
+  identity: V2_NINE_DOF_VA_ONLY
+  velocity:
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  acceleration:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  enabled:
+    xy_speed: false
+    xy_acceleration: false
+    tangential_acceleration: false
+    wheel_velocity: false
+    wheel_acceleration: false
+    spin_jerk: false
+multi_goal:
+  position_tolerance_m: 0.01
+  orientation_tolerance_rad: 0.01
+  dwell_s: 1.0
+  max_attempts: 3
+  targets:
+  - id: '1'
+    frame_id: world
+    link_name: Link6
+    position:
+    - 1.2192864721768588
+    - 0.3950952903201028
+    - 1.2281521027987377
+    orientation_xyzw:
+    - -0.4999865096979089
+    - 0.500020453465231
+    - -0.5000458377651791
+    - 0.4999471935817301
+  - id: '2'
+    frame_id: world
+    link_name: Link6
+    position:
+    - 1.1387653881361393
+    - 4.5899506294469905
+    - 1.1571231286459787
+    orientation_xyzw:
+    - -0.685900182405853
+    - 0.171852344348467
+    - -0.1718472981466188
+    - 0.6859126895146792
+  - id: '3'
+    frame_id: world
+    link_name: Link6
+    position:
+    - -3.2875155934657636
+    - 3.7839602136983252
+    - 1.2492629462731033
+    orientation_xyzw:
+    - -0.2613329050428174
+    - -0.3100551168139488
+    - 0.6598485532669961
+    - 0.6325905658724471
+  - id: '4'
+    frame_id: world
+    link_name: Link6
+    position:
+    - -2.093029625795876
+    - -9.328534288716629
+    - 1.0643485157724655
+    orientation_xyzw:
+    - -0.7003456711342131
+    - 0.09757124566497775
+    - -0.0976546206389892
+    - 0.7003280431417899
+  - id: '5'
+    frame_id: world
+    link_name: Link6
+    position:
+    - 0.12600000000273337
+    - 2.501979218678665e-06
+    - 1.3550472656814356
+    orientation_xyzw:
+    - -0.5000005865988345
+    - 0.4999994133937311
+    - -0.5000030865963978
+    - 0.4999969133912941

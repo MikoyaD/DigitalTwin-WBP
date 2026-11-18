@@ -1,0 +1,44 @@
+<launch>
+  <!-- 使用 demo_gazebo 启动 Gazebo + MoveIt + RViz（将桥接器监听设置为 QP 输出） -->
+  <include file="$(find cr5_car_moveit)/launch/demo_gazebo.launch">
+    <arg name="bridge_listen_topic" value="/qp_optimized_trajectory" />
+    <arg name="enable_old_collector" value="false" />
+    <arg name="world_name" value="$(find aws_robomaker_small_warehouse_world)/worlds/no_roof_small_warehouse.world" />
+  </include>
+
+  <!-- 将静态 PCD 作为可视化地图发布（可在 RViz 中显示） -->
+  <node pkg="pcl_ros" type="pcd_to_pointcloud" name="visual_map_publisher" args="$(find cr5_car_moveit)/map/warehouse.pcd 0.2">
+    <param name="frame_id" type="string" value="odom" />
+    <remap from="cloud_pcd" to="/visual_hologram_map" />
+  </node>
+
+  <!-- 使用预生成的静态 octomap（bt 文件）在 RViz 中显示八叉树地图 -->
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="$(find cr5_car_moveit)/map/warehouse_cropped.bt">
+    <param name="frame_id" type="string" value="odom" />
+  </node>
+
+  <node pkg="cr5_car_moveit" type="load_static_octomap.py" name="load_static_octomap" output="screen" />
+
+  <!-- 覆盖 sensors 配置以确保静态地图读取稳定 -->
+  <rosparam param="/move_group/sensors">[]</rosparam>
+
+  <!-- QP 拦截器：监听 /move_group/display_planned_path 并发布 /qp_optimized_trajectory -->
+  <node name="rviz_qp_interceptor" pkg="cr5_car_moveit" type="execute_1goal_qp_new.py" output="screen" launch-prefix="bash -c 'sleep 10; $0 $@' " />
+
+  <!-- 导出 OMPL 原始路点（便于对比与调试） -->
+  <node name="ompl_waypoints" pkg="cr5_car_moveit" type="ompl_waypoints_new.py" output="screen" launch-prefix="bash -c 'sleep 6; $0 $@' " />
+
+  <!-- 数据采集：
+       - thesis_data_collector_totg 通过把 qp 话题 remap 为 move_group/display_planned_path 来记录原生（TOTG）轨迹
+       - thesis_data_collector_qp 记录 QP 优化后的轨迹
+  -->
+  <node name="thesis_data_collector_totg" pkg="cr5_car_moveit" type="get_data_totg_new.py" output="screen" launch-prefix="bash -c 'sleep 12; $0 $@' " />
+
+  <node name="thesis_data_collector_qp" pkg="cr5_car_moveit" type="get_data_qp_new.py" output="screen" launch-prefix="bash -c 'sleep 13; $0 $@' " />
+
+  <!-- 多目标执行器：在 RViz 中选择并触发 execute_waypoints 的交互式流程 -->
+  <node pkg="cr5_car_moveit" type="execute_waypoints_new.py" name="waypoint_executor" output="screen" required="true" launch-prefix="bash -c 'sleep 15; $0 $@'">
+    <param name="planner_id" value="RRTConnect" />
+  </node>
+
+</launch>

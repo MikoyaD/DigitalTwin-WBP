@@ -1,0 +1,1054 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-1-g15f4949  Build Version: 1.6.7594.29634
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot name="combined_robot">
+    <!-- links: main serial chain -->
+    <!-- 车体部分 -->
+    <!-- origin xyz="-0.00960948205634758 0.155102284212689952 0.013456074745121" rpy="0 0 0"  -->
+
+    <link name="car_link">
+        <inertial>
+            <origin xyz="-0.1 0 0.01" rpy="0 0 0" />
+            <!-- <origin xyz="0.75 -0.65 0.7" rpy="0 0 0" />重心设置好像有大问题 往前0.75m ？原质量15.63-->
+            <mass value="30" />
+            <inertia ixx="5.0" ixy="0.0" ixz="0.0" iyy="5.0" iyz="0.0" izz="5.0" />
+            <!-- <inertia ixx="1.53081005698273" ixy="0.00164962208481819" ixz="-0.0101488009639756" iyy="1.99706478229092" iyz="0.000217843372231727" izz="3.00651715951187" /> -->
+            <!-- <inertia ixx="2.0" ixy="0.0" ixz="0.0" iyy="2.0" iyz="0.0" izz="2.0" /> -->
+        </inertial>
+        <!-- 为什么之前要将inertial注释掉？ 为了解决gazebo中warning 不允许根节点有inertial 设置了dummy_link-->
+        <visual>
+            <origin xyz="-0.155 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/base_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="-0.155 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/base_link.STL" />
+                <!-- <box size="0.6 0.4 0.15" /> -->
+            </geometry>
+        </collision>
+    </link>
+    <!-- <link name="dummy_link">
+        <inertial>
+            <origin xyz="0.75 -0.65 0.7" rpy="0 0 0" />
+            <mass value="15.6301709511456" />
+            <inertia ixx="1.53081005698273" ixy="0.00164962208481819" ixz="-0.0101488009639756" iyy="1.99706478229092" iyz="0.000217843372231727" izz="3.00651715951187" />
+        </inertial>
+
+        <visual>
+            <origin xyz="-0.155 0 0" rpy="0 0 0" />
+            <geometry>
+                <sphere radius="0" /> 
+            </geometry>
+        </visual>
+
+    </link>     -->
+
+    <!-- <joint name="car_to_dummy" type="fixed">
+      <parent link="car_link" />
+      <child link="dummy_link" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
+    </joint> -->
+
+    <!-- 机械臂部分 -->
+    <!-- <link name="dummy_link" /> -->
+    <link name="base_link">
+        <inertial>
+            <origin xyz="-8.0961E-06 0.0019103 0.028995" rpy="0 0 0" />
+            <mass value="0.90882" />
+            <inertia ixx="0.0014545" ixy="4.2968E-08" ixz="-1.8199E-07" iyy="0.001345" iyz="-6.243E-06" izz="0.002155" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/base_link.dae" />
+            </geometry>
+            <material name="">
+                <color rgba="0 0 0 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/base_link.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="base_to_car" type="fixed">
+        <parent link="car_link" />
+        <child link="base_link" />
+        <origin rpy="0 0 1.570795" xyz="-0.12 0 0.30804688" />
+    </joint>
+    <!-- <joint name="dummy_joint" type="fixed">
+        <parent link="dummy_link" />
+        <child link="base_link" />
+    </joint> -->
+    <link name="Link1">
+        <inertial>
+            <origin xyz="-8.7268E-07 -0.0032576 -0.0076748" rpy="0 0 0" />
+            <mass value="1.6123" />
+            <inertia ixx="0.0029122" ixy="5.7387E-09" ixz="1.9945E-08" iyy="0.0028191" iyz="0.00044094" izz="0.0032836" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link1.dae" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link1.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="joint1" type="revolute">
+        <origin xyz="0 0 0.147" rpy="0 0 0" />
+        <parent link="base_link" />
+        <child link="Link1" />
+        <axis xyz="0 0 1" />
+        <limit lower="-3.14" upper="3.14" effort="1000" velocity="2" />
+        <!-- 之前<limit …… effort="0" velocity="20" />直接锁死了力矩和速度，gazebo启动后只读取URDF，机械臂完全无法运动，rviz中execute失败 -->
+    </joint>
+    <link name="Link2">
+        <inertial>
+            <origin xyz="-0.21351 -1.3842E-06 0.14252" rpy="0 0 0" />
+            <mass value="5.5186" />
+            <inertia ixx="0.0085919" ixy="7.5552E-07" ixz="-7.8922E-07" iyy="0.027553" iyz="1.4629E-07" izz="0.028294" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link2.dae" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link2.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="joint2" type="revolute">
+        <origin xyz="0 0 0" rpy="1.5708 1.5708 0" />
+        <parent link="Link1" />
+        <child link="Link2" />
+        <axis xyz="0 0 1" />
+        <limit lower="-3.14" upper="3.14" effort="1000" velocity="2" />
+    </joint>
+    <link name="Link3">
+        <inertial>
+            <origin xyz="-0.15231 -1.4079E-07 0.022693" rpy="0 0 0" />
+            <mass value="2.8536" />
+            <inertia ixx="0.0032608" ixy="-3.2147E-10" ixz="0.00012363" iyy="0.0092967" iyz="2.9478E-10" izz="0.0095552" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link3.dae" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link3.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="joint3" type="revolute">
+        <origin xyz="-0.427 0 0" rpy="0 0 0" />
+        <parent link="Link2" />
+        <child link="Link3" />
+        <axis xyz="0 0 1" />
+        <limit lower="-3.14" upper="3.14" effort="1000" velocity="2" />
+    </joint>
+    <link name="Link4">
+        <inertial>
+            <origin xyz="-3.2386E-07 -0.002077 -0.0015548" rpy="0 0 0" />
+            <mass value="0.67058" />
+            <inertia ixx="0.00066939" ixy="4.1975E-10" ixz="-1.0734E-08" iyy="0.00065424" iyz="0.00011081" izz="0.00065365" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link4.dae" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link4.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="joint4" type="revolute">
+        <origin xyz="-0.357 0 0.141" rpy="0 0 -1.5708" />
+        <parent link="Link3" />
+        <child link="Link4" />
+        <axis xyz="0 0 1" />
+        <limit lower="-3.14" upper="3.14" effort="1000" velocity="2" />
+    </joint>
+    <link name="Link5">
+        <inertial>
+            <origin xyz="-3.7738E-07 -0.0045777 -0.0012971" rpy="0 0 0" />
+            <mass value="0.7269" />
+            <inertia ixx="0.00073069" ixy="-5.7806E-09" ixz="6.7132E-09" iyy="0.00071195" iyz="-0.00011926" izz="0.00071391" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link5.dae" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/Link5.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="joint5" type="revolute">
+        <origin xyz="0 -0.116 0" rpy="1.5708 0 0" />
+        <parent link="Link4" />
+        <child link="Link5" />
+        <axis xyz="0 0 1" />
+        <limit lower="-3.14" upper="3.14" effort="1000" velocity="2" />
+    </joint>
+    <link name="Link6">
+        <inertial>
+            <origin xyz="5.0777E-11 9.3774E-05 -0.019285" rpy="0 0 0" />
+            <mass value="0.15789" />
+            <inertia ixx="7.8045E-05" ixy="6.1582E-15" ixz="6.2471E-14" iyy="7.9168E-05" iyz="-1.3822E-07" izz="0.00012951" />
+        </inertial>
+        <visual>
+            <origin xyz="-0.102 -0.05  -0.035" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/link6.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="-0.102 -0.05  -0.035" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5/link6.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <!-- 将link6直接作为深度相机（视觉相机和逻辑相机），不新增link作为逻辑相机，加入相关配置 -->
+    <joint name="joint6" type="revolute">
+        <origin xyz="0 0.105 0" rpy="-1.5708 0 0" />
+        <parent link="Link5" />
+        <child link="Link6" />
+        <axis xyz="0 0 1" />
+        <limit lower="-3.14" upper="3.14" effort="1000" velocity="2" />
+    </joint>
+
+    <link name="realsense_link">
+        <visual>
+            <geometry>
+                <box size="0.025 0.025 0.025"/>
+            </geometry>
+            <material name="">
+                <color rgba="1 0 0 1" />
+            </material>
+        </visual>
+        <!-- 不需要collision -->
+        <inertial>
+            <mass value="0.1" />
+            <origin xyz="0 0 0" />
+            <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001" />
+        </inertial>
+    </link>
+
+    <joint name="realsense_joint" type="fixed">
+        <parent link="Link6"/>
+        <child link="realsense_link"/>
+        <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    </joint>
+
+    <gazebo reference="realsense_link">
+        <material>Gazebo/Red</material>
+        <sensor name="realsense_camera" type="depth">
+            <update_rate>10</update_rate>
+            <pose>0 0 0 0 -1.5708 1.5708</pose>
+            <camera>
+                <horizontal_fov>1.5184</horizontal_fov>
+                <image>
+                    <width>320</width>
+                    <height>240</height>
+                    <format>R8G8B8</format>
+                </image>
+                <clip>
+                    <near>0.3</near> <far>5.0</far>
+                </clip>
+            </camera>
+            <plugin name="realsense_controller" filename="libgazebo_ros_openni_kinect.so">
+                <baseline>0.2</baseline>
+                <alwaysOn>true</alwaysOn>
+                <updateRate>10.0</updateRate>
+                <cameraName>realsense</cameraName>
+                <imageTopicName>/realsense/color/image_raw</imageTopicName>
+                <cameraInfoTopicName>/realsense/color/camera_info</cameraInfoTopicName>
+                <depthImageTopicName>/realsense/depth/image_raw</depthImageTopicName>
+                <depthImageInfoTopicName>/realsense/depth/camera_info</depthImageInfoTopicName>
+                <pointCloudTopicName>/realsense/depth/points</pointCloudTopicName>
+                <frameName>realsense_link</frameName> <pointCloudCutoff>0.3</pointCloudCutoff>
+                <pointCloudCutoffMax>5.0</pointCloudCutoffMax>
+                <distortionK1>0.0</distortionK1>
+                <distortionK2>0.0</distortionK2>
+                <distortionK3>0.0</distortionK3>
+                <distortionT1>0.0</distortionT1>
+                <distortionT2>0.0</distortionT2>
+                <CxPrime>0</CxPrime>
+                <Cx>0</Cx>
+                <Cy>0</Cy>
+                <focalLength>0</focalLength>
+                <hackBaseline>0</hackBaseline>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+
+    <!-- <link name="realsense_optical_frame" />
+
+    <joint name="realsense_optical_joint" type="fixed">
+        <parent link="realsense_link"/>
+        <child link="realsense_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+    </joint> -->
+
+
+
+    <!-- <gazebo reference="realsense_optical_frame">
+        <material>Gazebo/Red</material>
+        <sensor name="realsense_camera" type="depth">
+            <update_rate>10</update_rate>
+            <camera>
+                <horizontal_fov>1.5184</horizontal_fov>
+                <image>
+                    <width>320</width>
+                    <height>240</height>
+                    <format>R8G8B8</format>
+                </image>
+                <clip>
+                    <near>0.3</near> <far>5.0</far>
+                </clip>
+            </camera>
+            <plugin name="realsense_controller" filename="libgazebo_ros_openni_kinect.so">
+                <baseline>0.2</baseline>
+                <alwaysOn>true</alwaysOn>
+                <updateRate>10.0</updateRate>
+                <cameraName>realsense</cameraName>
+                <imageTopicName>/realsense/color/image_raw</imageTopicName>
+                <cameraInfoTopicName>/realsense/color/camera_info</cameraInfoTopicName>
+                <depthImageTopicName>/realsense/depth/image_raw</depthImageTopicName>
+                <depthImageInfoTopicName>/realsense/depth/camera_info</depthImageInfoTopicName>
+                <pointCloudTopicName>/realsense/depth/points</pointCloudTopicName>
+                <frameName>realsense_optical_frame</frameName> <pointCloudCutoff>0.3</pointCloudCutoff>
+                <pointCloudCutoffMax>5.0</pointCloudCutoffMax>
+                <distortionK1>0.0</distortionK1>
+                <distortionK2>0.0</distortionK2>
+                <distortionK3>0.0</distortionK3>
+                <distortionT1>0.0</distortionT1>
+                <distortionT2>0.0</distortionT2>
+                <CxPrime>0</CxPrime>
+                <Cx>0</Cx>
+                <Cy>0</Cy>
+                <focalLength>0</focalLength>
+                <hackBaseline>0</hackBaseline>
+            </plugin>
+        </sensor>
+    </gazebo> -->
+
+
+    
+
+    <!-- 主动轮部分 -->
+    <link name="wheel_left_link">
+        <inertial>
+            <origin xyz="-6.38378239159465E-16 0 1.81799020282369E-15" rpy="0 0 0" />
+            <mass value="1.448419489185885" />
+            <inertia ixx="0.000459163853205753" ixy="-1.2372424940797E-20" ixz="3.3881317890172E-20" iyy="0.000800526024657189" iyz="-3.83330672379514E-20" izz="0.000459163853205753" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/wheel_left_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/wheel_left_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="wheel_left_joint" type="continuous">
+        <origin xyz="0 0.1975 0.06" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="wheel_left_link" />
+        <axis xyz="0 1 0" />
+    </joint>
+    <link name="wheel_right_link">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <mass value="1.448419489185885" />
+            <inertia ixx="0.000459163853205753" ixy="5.62311913871958E-20" ixz="2.03287907341032E-20" iyy="0.000800526024657189" iyz="-6.58205296610379E-21" izz="0.000459163853205753" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/wheel_right_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/wheel_right_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="wheel_right_joint" type="continuous">
+        <origin xyz="0 -0.1975 0.06" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="wheel_right_link" />
+        <axis xyz="0 1 0" />
+    </joint>
+    <!-- 从动支撑球部分 -->
+    <link name="ball_left_link">
+        <inertial>
+            <origin xyz="0 0 3.46944695195361E-18" rpy="0 0 0" />
+            <mass value="0.0335103216382911" />
+            <inertia ixx="5.36165146212658E-06" ixy="0" ixz="0" iyy="5.36165146212658E-06" iyz="0" izz="5.36165146212658E-06" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/ball_left_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/ball_left_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="ball_left_joint" type="continuous">
+        <origin xyz="-0.355 0.18 0.0205" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="ball_left_link" />
+        <axis xyz="1 1 1" />
+    </joint>
+    <link name="ball_right_link">
+        <inertial>
+            <origin xyz="0 0 3.46944695195361E-18" rpy="0 0 0" />
+            <mass value="0.0335103216382911" />
+            <inertia ixx="5.36165146212658E-06" ixy="0" ixz="-1.46936793852786E-38" iyy="5.36165146212658E-06" iyz="-1.05879118406788E-22" izz="5.36165146212658E-06" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/ball_right_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/ball_right_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="ball_right_joint" type="continuous">
+        <origin xyz="-0.355 -0.18 0.0205" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="ball_right_link" />
+        <axis xyz="1 1 1" />
+    </joint>
+    <!-- 超声波部分 -->
+    <link name="sonar_forward_left_link">
+        <inertial>
+            <origin xyz="-0.0015 -2.77555756156289E-17 0" rpy="0 0 0" />
+            <mass value="0.000942477796076943" />
+            <inertia ixx="4.71238898038472E-08" ixy="-1.65436122510606E-24" ixz="5.78175955783058E-25" iyy="2.42688032489813E-08" iyz="-3.57012914901396E-24" izz="2.42688032489813E-08" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_left_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_left_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="sonar_forward_left_joint" type="fixed">
+        <origin xyz="0.1309 0.21881 0.095" rpy="0 0 0.44291" />
+        <parent link="car_link" />
+        <child link="sonar_forward_left_link" />
+        <axis xyz="0 0 0" />
+    </joint>
+    <link name="sonar_forward_mid_left_link">
+        <inertial>
+            <origin xyz="-0.0015 2.77555756156289E-17 0" rpy="0 0 0" />
+            <mass value="0.000942477796076939" />
+            <inertia ixx="4.7123889803847E-08" ixy="-3.1717804153766E-24" ixz="3.29030670124936E-40" iyy="2.42688032489812E-08" iyz="1.98523347012727E-24" izz="2.42688032489812E-08" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_mid_left_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_mid_left_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="sonar_forward_mid_left_joint" type="fixed">
+        <origin xyz="0.146 0.13675 0.097" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="sonar_forward_mid_left_link" />
+        <axis xyz="0 0 0" />
+    </joint>
+    <link name="sonar_forward_mid_link">
+        <inertial>
+            <origin xyz="-0.0015 -3.8324824959777E-19 0" rpy="0 0 0" />
+            <mass value="0.000942477796076939" />
+            <inertia ixx="4.71238898038469E-08" ixy="-4.68449839467661E-25" ixz="9.38176689139443E-26" iyy="2.42688032489812E-08" iyz="-5.42837276987925E-24" izz="2.42688032489812E-08" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_mid_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_mid_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="sonar_forward_mid_joint" type="fixed">
+        <origin xyz="0.146 0 0.097" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="sonar_forward_mid_link" />
+        <axis xyz="0 0 0" />
+    </joint>
+    <link name="sonar_forward_mid_right_link">
+        <inertial>
+            <origin xyz="-0.0015 2.77555756156289E-17 0" rpy="0 0 0" />
+            <mass value="0.000942477796076939" />
+            <inertia ixx="4.7123889803847E-08" ixy="-3.006344292866E-24" ixz="1.65436122510606E-25" iyy="2.42688032489812E-08" iyz="4.96308367531817E-24" izz="2.42688032489812E-08" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_mid_right_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_mid_right_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="sonar_forward_mid_right_joint" type="fixed">
+        <origin xyz="0.146 -0.13675 0.097" rpy="0 0 0" />
+        <parent link="car_link" />
+        <child link="sonar_forward_mid_right_link" />
+        <axis xyz="0 0 0" />
+    </joint>
+    <link name="sonar_forward_right_link">
+        <inertial>
+            <origin xyz="-0.0015 1.38777878078145E-17 0" rpy="0 0 0" />
+            <mass value="0.000942477796076946" />
+            <inertia ixx="4.71238898038473E-08" ixy="0" ixz="-9.31592254117073E-25" iyy="2.42688032489814E-08" iyz="1.66847103763285E-24" izz="2.42688032489814E-08" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_right_link.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://robot_description/meshes/cr5_car/robot_description/sonar_forward_right_link.STL" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="sonar_forward_right_joint" type="fixed">
+        <origin xyz="0.1309 -0.21881 0.095" rpy="0 0 -0.44291" />
+        <parent link="car_link" />
+        <child link="sonar_forward_right_link" />
+        <axis xyz="0 0 0" />
+    </joint>
+    <!-- 轮子摩擦系数设置 -->
+    <gazebo reference="wheel_left_link">
+        <mu1 value="200.0" />
+        <mu2 value="100.0" />
+        <kp value="10000000.0" />
+        <kd value="1.0" />
+        <material>Gazebo/Grey</material>
+        <!-- <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+            <robotNamespace>/</robotNamespace>
+        </plugin> -->
+        <!-- 为什么只在左轮中启动gazebo_ros_control？ -->
+    </gazebo>
+    <gazebo reference="wheel_right_link">
+        <mu1 value="200.0" />
+        <mu2 value="100.0" />
+        <kp value="10000000.0" />
+        <kd value="1.0" />
+        <material>Gazebo/Grey</material>
+    </gazebo>
+    <gazebo reference="ball_left_link">
+        <mu1 value="0.0" />
+        <mu2 value="0.0" />
+        <kp value="10000000.0" />
+        <kd value="1.0" />
+        <material>Gazebo/Grey</material>
+    </gazebo>
+    <gazebo reference="ball_right_link">
+        <mu1 value="0.0" />
+        <mu2 value="0.0" />
+        <kp value="10000000.0" />
+        <kd value="1.0" />
+        <material>Gazebo/Grey</material>
+    </gazebo>
+    <!-- 主动轮差速驱动设置 -->
+    <gazebo>
+        <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+            <alwaysOn>true</alwaysOn>
+            <updateRate>50</updateRate>
+            <legacyMode>true</legacyMode>
+            <leftJoint>wheel_left_joint</leftJoint>
+            <rightJoint>wheel_right_joint</rightJoint>
+            <wheelSeparation>0.3935</wheelSeparation>
+            <wheelDiameter>0.12</wheelDiameter>
+            <torque>20</torque>
+            <commandTopic>cb_robot_description/control/cmd_vel_sim</commandTopic>
+            <odometryTopic>cb_robot_description/hardware/odom_sim</odometryTopic>
+            <odometryFrame>odom</odometryFrame>
+            <robotBaseFrame>car_link</robotBaseFrame>
+            <publishWheelTF>false</publishWheelTF>
+            <publishWheelJointState>false</publishWheelJointState>
+            <!-- <publishOdomTF>false</publishOdomTF> -->
+            <publishOdomTF>true</publishOdomTF>
+
+            <rosDebugLevel>na</rosDebugLevel>
+            <wheelAcceleration>0</wheelAcceleration>
+            <wheelTorque>20</wheelTorque>
+            <odometrySource>world</odometrySource>
+            <publishTf>1</publishTf>
+        </plugin>
+    </gazebo>
+    <!-- 雷达设置 -->
+    <gazebo reference="lidar_link">
+        <sensor type="ray" name="lidar">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>true</visualize>
+            <update_rate>20</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>1200</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-5.06145</min_angle>
+                        <max_angle>-1.22173</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>30.0</max>
+                    <resolution>0.03</resolution>
+                </range>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.01</stddev>
+                </noise>
+            </ray>
+            <plugin name="laser_controller" filename="libgazebo_ros_laser.so">
+                <topicName>cb_robot_description/hardware/lidar/scan</topicName>
+                <frameName>lidar_link</frameName>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <!-- IMU 设置 -->
+    <gazebo reference="car_link">
+        <gravity>true</gravity>
+        <sensor name="imu_sensor" type="imu">
+            <always_on>true</always_on>
+            <update_rate>50</update_rate>
+            <visualize>true</visualize>
+            <topic>__default_topic__</topic>
+            <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+                <topicName>cb_robot_description/hardware/imu</topicName>
+                <bodyName>car_link</bodyName>
+                <updateRateHZ>50.0</updateRateHZ>
+                <gaussianNoise>0.0</gaussianNoise>
+                <xyzOffset>0 0 0</xyzOffset>
+                <rpyOffset>0 0 0</rpyOffset>
+                <frameName>car_link</frameName>
+                <initialOrientationAsReference>true</initialOrientationAsReference>
+            </plugin>
+            <pose>0 0 0 0 0 0</pose>
+        </sensor>
+    </gazebo>
+    <!-- 超声波设置 -->
+    <gazebo reference="sonar_forward_left_link">
+        <sensor type="ray" name="ultrasonic_sensor_forward_left_link">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>20</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>3</max>
+                    <resolution>0.01</resolution>
+                </range>
+            </ray>
+            <plugin name="ultrasonic_sensor_controller_forward_left_link" filename="libgazebo_ros_range.so">
+                <updateRate>20</updateRate>
+                <gaussianNoise>0.01</gaussianNoise>
+                <alwaysOn>true</alwaysOn>
+                <fov>0.26</fov>
+                <topicName>cb_robot_description/hardware/sonar/forward_left</topicName>
+                <frameName>sonar_forward_left_link</frameName>
+                <radiation>ultrasound</radiation>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <gazebo reference="sonar_forward_mid_left_link">
+        <sensor type="ray" name="ultrasonic_sensor_forward_mid_left_link">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>20</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>3</max>
+                    <resolution>0.01</resolution>
+                </range>
+            </ray>
+            <plugin name="ultrasonic_sensor_controller_forward_mid_left_link" filename="libgazebo_ros_range.so">
+                <updateRate>20</updateRate>
+                <gaussianNoise>0.01</gaussianNoise>
+                <alwaysOn>true</alwaysOn>
+                <fov>0.26</fov>
+                <topicName>cb_robot_description/hardware/sonar/forward_mid_left</topicName>
+                <frameName>sonar_forward_mid_left_link</frameName>
+                <radiation>ultrasound</radiation>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <gazebo reference="sonar_forward_mid_link">
+        <sensor type="ray" name="ultrasonic_sensor_forward_mid_link">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>20</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>3</max>
+                    <resolution>0.01</resolution>
+                </range>
+            </ray>
+            <plugin name="ultrasonic_sensor_controller_forward_mid_link" filename="libgazebo_ros_range.so">
+                <updateRate>20</updateRate>
+                <gaussianNoise>0.01</gaussianNoise>
+                <alwaysOn>true</alwaysOn>
+                <fov>0.26</fov>
+                <topicName>cb_robot_description/hardware/sonar/forward_mid</topicName>
+                <frameName>sonar_forward_mid_link</frameName>
+                <radiation>ultrasound</radiation>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <gazebo reference="sonar_forward_mid_right_link">
+        <sensor type="ray" name="ultrasonic_sensor_forward_mid_right_link">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>20</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>3</max>
+                    <resolution>0.01</resolution>
+                </range>
+            </ray>
+            <plugin name="ultrasonic_sensor_controller_forward_mid_right_link" filename="libgazebo_ros_range.so">
+                <updateRate>20</updateRate>
+                <gaussianNoise>0.01</gaussianNoise>
+                <alwaysOn>true</alwaysOn>
+                <fov>0.26</fov>
+                <topicName>cb_robot_description/hardware/sonar/forward_mid_right</topicName>
+                <frameName>sonar_forward_mid_right_link</frameName>
+                <radiation>ultrasound</radiation>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <gazebo reference="sonar_forward_right_link">
+        <sensor type="ray" name="ultrasonic_sensor_forward_right_link">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>20</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>5</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.1</min_angle>
+                        <max_angle>0.1</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>3</max>
+                    <resolution>0.01</resolution>
+                </range>
+            </ray>
+            <plugin name="ultrasonic_sensor_controller_forward_right_link" filename="libgazebo_ros_range.so">
+                <updateRate>20</updateRate>
+                <gaussianNoise>0.01</gaussianNoise>
+                <alwaysOn>true</alwaysOn>
+                <fov>0.26</fov>
+                <topicName>cb_robot_description/hardware/sonar/forward_right</topicName>
+                <frameName>sonar_forward_right_link</frameName>
+                <radiation>ultrasound</radiation>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <!-- 六个关节的<hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>都改成了hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface> -->
+    <transmission name="trans_joint1">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="joint1">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="joint1_motor">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_joint2">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="joint2">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="joint2_motor">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_joint3">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="joint3">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="joint3_motor">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_joint4">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="joint4">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="joint4_motor">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_joint5">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="joint5">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="joint5_motor">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_joint6">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="joint6">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="joint6_motor">
+            <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_wheel_left_joint">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="wheel_left_joint">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="wheel_left_joint_motor">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_wheel_right_joint">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="wheel_right_joint">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="wheel_right_joint_motor">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_ball_left_joint">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="ball_left_joint">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="ball_left_joint_motor">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+    <transmission name="trans_ball_right_joint">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="ball_right_joint">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="ball_right_joint_motor">
+            <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+
+    <gazebo>
+        <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+            <robotNamespace>/</robotNamespace>
+            <legacyModeNS>true</legacyModeNS>
+        </plugin>
+    </gazebo>
+
+</robot>
+
+<!-- 复制自/home/robot/digitaltwin/zzs_ws/src/robot_description/urdf/n_robot_description.urdf -->

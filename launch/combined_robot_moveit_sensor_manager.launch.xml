@@ -1,0 +1,9 @@
+<launch>
+  <rosparam command="load" file="$(find cr5_car_moveit)/config/sensors_3d.yaml" />
+  
+  <param name="octomap_frame" type="string" value="odom" /> <!-- 在此处写入，无效，尝试在demo_gazebo.launch写入 -->
+
+  <param name="octomap_resolution" type="double" value="0.05" />
+
+  <param name="max_range" type="double" value="5.0" />
+</launch>

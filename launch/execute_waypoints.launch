@@ -1,0 +1,41 @@
+<launch>
+  <arg name="planner" default="RRTConnect" />
+
+  <include file="$(find cr5_car_moveit)/launch/demo_in_warehouse.launch" />
+
+
+  <param name="robot_description_planning/default_robot_padding" value="0.1" />
+
+
+  <rosparam file="$(find cr5_car_moveit)/config/ros_controllers.yaml" command="load"/>
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller arm_controller" />
+
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse_cropped.bt">
+    <param name="frame_id" type="string" value="odom" />
+  </node>
+  <node pkg="cr5_car_moveit" type="load_static_octomap.py" name="load_static_octomap" output="screen" />
+
+  <group>
+    <remap from="/realsense/depth/points_no_ground" to="/void_blackhole_cloud" />
+    <include file="$(find cr5_car_moveit)/launch/demo.launch">
+      <arg name="load_robot_description" value="false"/>
+      <arg name="moveit_controller_manager" value="simple" />
+      <arg name="fake_execution_type" value="false"/>
+    </include>
+  </group>
+
+  <node name="custom_rviz" pkg="rviz" type="rviz" args="-d /home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/launch/execute_waypoints.rviz" required="true" />
+
+  <rosparam param="/move_group/sensors">[]</rosparam>
+  <param name="move_group/planning_scene_monitor/publish_planning_scene" value="true" />
+  <rosparam file="$(find cr5_car_moveit)/config/controllers.yaml" command="load"/>
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_odom" args="0 0 0 0 0 0 world odom" />
+  <node pkg="cr5_car_moveit" type="ideal_trajectory_bridge.py" name="ideal_traj_bridge" output="screen" />
+
+  <node pkg="cr5_car_moveit" type="get_data.py" name="thesis_data_collector" output="screen" />
+
+  <node pkg="cr5_car_moveit" type="execute_waypoints.py" name="waypoint_executor" output="screen" required="true">
+    <param name="planner_id" value="$(arg planner)" />
+  </node>
+  </launch>

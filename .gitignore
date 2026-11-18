@@ -1,0 +1,37 @@
+# 运行产物与本机环境；不删除现有文件
+/v2/outputs/
+/data/
+/script/
+/v2/trajectories/
+/v2/docs/test_run_*.json
+/v2/docs/ros_probe_*.json
+/v2/docs/source_protection.json
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.npz
+*.csv
+*.png
+*.jpg
+*.bag
+*.log
+*.so
+*.o
+/map/backup/
+/map/*.pcd
+*.usd
+*.usda
+*.usdc
+*.stl
+*.STL
+# 不纳入本次 V2-PRP 基线的旧运行记录
+/1goal
+/COMPLETION_REPORT.md
+/IMPROVEMENTS_SUMMARY.md
+/IMPROVEMENTS_v3.md
+/IMPROVE_v3_SUMMARY.txt
+/QUICKSTART.md
+/map/1goal.world
+/v2/docs/PHASE_II_IMPLEMENTATION.md
+/v2/docs/PHASE_II_MANIFEST.json
+/v2/docs/static_limitset_research_example.json

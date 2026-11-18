@@ -1,0 +1,35 @@
+<launch>
+
+  <node pkg="cr5_car_moveit" type="get_data.py" name="data_recorder" output="screen" />
+  <include file="$(find cr5_car_moveit)/launch/demo_in_warehouse.launch" />
+
+  <rosparam file="$(find cr5_car_moveit)/config/ros_controllers.yaml" command="load"/>
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller arm_controller" />
+  
+  <node pkg="pcl_ros" type="pcd_to_pointcloud" name="visual_map_publisher" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse.pcd 0.2">
+    <param name="frame_id" type="string" value="odom" />
+    <remap from="cloud_pcd" to="/visual_hologram_map" />
+  </node>
+
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_talker" args="/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/map/warehouse_cropped.bt">
+    <param name="frame_id" type="string" value="odom" />
+  </node>
+
+  <node pkg="cr5_car_moveit" type="load_static_octomap.py" name="load_static_octomap" output="screen" />
+
+  <include file="$(find cr5_car_moveit)/launch/demo.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="moveit_controller_manager" value="simple" />
+    <arg name="fake_execution_type" value="false"/>
+  </include>
+
+  <!-- 为了不影响之前的demo demo_gazebo 等使用，在experiment.launch中覆盖sensors参数 使得不影响全局静态地图读取 -->
+  <rosparam param="/move_group/sensors">[]</rosparam>
+  <rosparam file="$(find cr5_car_moveit)/config/controllers.yaml" command="load"/>
+
+  <!-- 控制脚本二选一  非理想和理想情况 -->
+  <!-- <node pkg="cr5_car_moveit" type="base_trajectory_bridge.py" name="traj_bridge" output="screen" /> -->
+  <node pkg="cr5_car_moveit" type="ideal_trajectory_bridge.py" name="ideal_traj_bridge" output="screen" />
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_odom" args="0 0 0 0 0 0 world odom" />
+</launch>

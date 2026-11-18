@@ -1,0 +1,29 @@
+version: 1
+status: exploratory_real_scene_preflight
+master_uri: http://127.0.0.1:11321
+service_timeout_s: 45
+planner_id: RRTstar
+group_name: whole
+allowed_planning_time_s: 5.0
+velocity_scaling: 0.5
+acceleration_scaling: 0.5
+input_stage: post_TOTG
+frame_id: world
+static_octomap: map/warehouse_cropped.bt
+waypoints_source: map/waypoints.json
+tasks:
+  - id: archived_5_to_1_joint_base
+    start_waypoint_id: 5
+    goal_waypoint_id: 1
+    provenance: archived waypoint candidates; real feasibility not yet verified
+  - id: archived_1_to_2_turn_arm
+    start_waypoint_id: 1
+    goal_waypoint_id: 2
+    provenance: archived waypoint candidates; real feasibility not yet verified
+research_limits:
+  xy_speed: {value: 0.5, unit: m/s, kind: research_limit, source: V2 design section 7.2 simulation research setting}
+  xy_acceleration: {value: 0.5, unit: m/s^2, kind: research_limit, source: V2 design section 7.2 simulation research setting}
+  tangential_acceleration: {value: 0.5, unit: m/s^2, kind: research_limit, source: V2 design section 7.2 simulation research setting}
+  wheel_velocity: {value: [8.333333333333334, 8.333333333333334], unit: rad/s, kind: research_limit, source: 0.5 m/s wheel rim research setting divided by model radius 0.06 m}
+  wheel_acceleration: {value: [8.333333333333334, 8.333333333333334], unit: rad/s^2, kind: research_limit, source: 0.5 m/s^2 wheel rim research setting divided by model radius 0.06 m}
+  spin_jerk: {value: 2.0, unit: rad/s^3, kind: research_limit, source: V2 design section 7.2 research setting not hardware}

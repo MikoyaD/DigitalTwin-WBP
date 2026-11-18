@@ -1,0 +1,18 @@
+<launch>
+  <include file="$(find cr5_car_moveit)/launch/demo_gazebo.launch">
+      <arg name="bridge_listen_topic" value="/qp_optimized_trajectory" />
+      <arg name="enable_old_collector" value="false" />
+  </include>
+
+  <node name="rviz_qp_interceptor" pkg="cr5_car_moveit" type="execute_1goal_qp.py" output="screen" launch-prefix="bash -c 'sleep 10; $0 $@' " />
+
+  <!-- Dump raw OMPL waypoint sets (original plan points) -->
+  <node name="ompl_waypoints" pkg="cr5_car_moveit" type="ompl_waypoints.py" output="screen" launch-prefix="bash -c 'sleep 6; $0 $@' " />
+
+  <node name="thesis_data_collector_totg" pkg="cr5_car_moveit" type="get_data_1goal_qp.py" output="screen" launch-prefix="bash -c 'sleep 12; $0 $@' ">
+      <remap from="/qp_optimized_trajectory" to="/move_group/display_planned_path"/>
+  </node>
+
+  <node name="thesis_data_collector_qp" pkg="cr5_car_moveit" type="get_data_1goal_qp.py" output="screen" launch-prefix="bash -c 'sleep 13; $0 $@' " />
+
+</launch>

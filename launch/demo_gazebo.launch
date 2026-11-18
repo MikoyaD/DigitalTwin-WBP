@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="bridge_listen_topic" default="/move_group/display_planned_path"/>
+
+  <arg name="pipeline" default="ompl" doc="Planning pipeline to use with MoveIt"/>
+
+  <arg name="gazebo_gui" default="true" doc="Start Gazebo GUI"/>
+  <arg name="paused" default="false" doc="Start Gazebo paused"/>
+  <arg name="world_name" default="$(find cr5_car_moveit)/map/1goal.world" doc="Gazebo world file"/>
+  <arg name="world_pose" default="-x 0 -y 0 -z 0.1 -R 0 -P 0 -Y 0" doc="Pose to spawn the robot at"/>
+  <param name="robot_description_planning/shape_transform_cache_lookup_wait_time" value="0.2" />
+  
+  <include file="$(dirname)/gazebo.launch" pass_all_args="true"/>
+  
+  <node name="ideal_traj_bridge" pkg="cr5_car_moveit" type="ideal_trajectory_bridge.py" output="screen">
+      <param name="model_name" type="string" value="robot" />
+      <param name="trajectory_topic" type="string" value="$(arg bridge_listen_topic)" />
+  </node>
+  
+  <param name="robot_description_planning/default_robot_padding" value="0.1" />
+
+  <include file="$(dirname)/demo.launch" pass_all_args="true">
+    <arg name="load_robot_description" value="false" />
+    <arg name="moveit_controller_manager" value="simple" />
+    </include>
+
+<node pkg="tf2_ros" type="static_transform_publisher" name="world_to_odom" args="0 0 0 0 0 0 world odom" />
+
+<arg name="enable_old_collector" default="true" doc="Enable the legacy data collector" />
+  
+<node if="$(arg enable_old_collector)" name="rviz_data_collector" pkg="cr5_car_moveit" type="get_data_1goal.py" output="screen" />
+</launch>
+
+<!-- rviz中group组不能选base，会出错 exit code -11 代表 段错误（Segmentation Fault），意味着程序试图访问非法的内存地址。 
+这在 MoveIt 中是一个已知的高级 Bug，通常发生在处理“纯虚拟关节（Virtual Joint）”组的时候。
+MoveIt 的核心设计是针对“关节链（Kinematic Chain）”的。当选择 whole 组时，它包含了一个完整的链（从 world -> car -> arm ），
+MoveIt 可以处理。但当只选择 base 组时，这个组里只有一个“虚拟平面关节”，没有任何实体 Link 构成的链。
+在某些版本的 MoveIt 中，轨迹处理插件在计算这个孤立关节的动力学或验证状态时，会因为找不到预期的物理链结构而发生内存越界，直接导致崩溃。-->

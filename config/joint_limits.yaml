@@ -1,0 +1,93 @@
+# joint_limits.yaml allows the dynamics properties specified in the URDF to be overwritten or augmented as needed
+
+# For beginners, we downscale velocity and acceleration limits.
+# You can always specify higher scaling factors (<= 1.0) in your motion requests.  # Increase the values below to 1.0 to always move at maximum speed.
+default_velocity_scaling_factor: 1
+default_acceleration_scaling_factor: 1
+
+# Specific joint properties can be changed with the keys [max_position, min_position, max_velocity, max_acceleration]
+# Joint limits can be turned off with [has_velocity_limits, has_acceleration_limits]
+#[has_velocity_limits, has_acceleration_limits]一旦这个标志位是 false，MoveIt 就会直接忽略下面的 max_velocity: 0
+# 但之前启动gazebo后，在rviz中execute失败：MoveIt 规划好轨迹后，把数据发给 Gazebo。Gazebo 不看 joint_limits.yaml，它只看URDF
+# 之前gazebo_combined_robot.urdf文件中joint1～6的<limit ... velocity="0" effort="0" 导致gazebo中机械臂呈完全不上电的瘫软状/>
+joint_limits:
+  joint1:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+  joint2:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+  joint3:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+  joint4:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+  joint5:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+  joint6:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+  
+  # world_car:
+  #   has_velocity_limits: true
+  #   max_velocity: 0.5          # 限制为 0.3 m/s，强制规划变慢
+  #   has_acceleration_limits: true
+  #   max_acceleration: 0.5      # 限制加速度，防止规划出急停急起
+
+  #没有用，在/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit/launch/ompl_planning_pipeline.launch.xml将IPTP换为TOTG，尝试以下限制
+  #生效了
+  world_car/x:
+    has_velocity_limits: true
+    max_velocity: 0.5          # 限制为 0.1 m/s (非常慢，确保跟得上)
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+
+    has_position_limits: false
+  
+  world_car/y:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+
+    has_position_limits: false
+
+  world_car/theta:
+    has_velocity_limits: true
+    max_velocity: 0.5         # 旋转速度 rad/s
+    has_acceleration_limits: true
+    max_acceleration: 0.5
+    has_jerk_limits: true  # 【新增】
+    max_jerk: 2.0          # 【新增】
+
+    has_position_limits: false
