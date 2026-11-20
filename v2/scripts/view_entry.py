@@ -12,7 +12,14 @@ def main():
     parser.add_argument('--config',default=str(V2/'configs/v2_workspace_single_goal.yaml'))
     parser.add_argument('--no-rviz',action='store_true',help='reuse an already open RViz')
     parser.add_argument('--wait-subscriber',type=float,default=20.)
+    parser.add_argument('--gazebo-csv',help='Replay a standard single-segment CSV on an already-running isolated Gazebo master')
+    parser.add_argument('--replay-output',help='Directory for replay observations')
+    parser.add_argument('--replay-open-rviz',action='store_true',help='explicitly open an additional RViz for Gazebo replay')
     args=parser.parse_args()
+    if args.gazebo_csv:
+        from .gazebo_csv_replay import run
+        if args.replay_open_rviz and args.no_rviz:parser.error('--replay-open-rviz conflicts with --no-rviz')
+        return run(args.gazebo_csv,args.replay_output,args.replay_open_rviz)
     start(yaml.safe_load(Path(args.config).read_text()),for_display=True)
     rviz=None
     try:

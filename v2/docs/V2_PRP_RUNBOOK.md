@@ -365,4 +365,56 @@ git switch --detach v2-prp-five-goal-20261119   # 仅在工作区可安全切换
 git switch master
 ```
 
-分离 HEAD 适合查看历史；如需从历史版本继续开发，先建自己的分支。源码、配置、launch、小型地图和仓库内文档随 Git；`v2/outputs/`、完整 NPZ/CSV、历史 evidence、`script/` 旧功能、大型 USD/mesh、构建产物和系统 ROS 依赖不随 Git。各机自行保留 `robot_description` 等外部资源，详见仓库 `SYNC_FILES.md`。库内 `v2/docs/V2_PRP_RUNBOOK.md` 是此手册的发布副本；外部主报告 `/home/robot/digitaltwin/项目报告.md` 保持原位，不由该仓库同步。
+分离 HEAD 适合查看历史；如需从历史版本继续开发，先建自己的分支。持续同步 V2 源码、必要文本配置、研究说明和开发指令；必要场景快照（如确在使用的 `default_scene_snapshot.bin`）先确认两端位置和用途，再明确选择跟踪或逐文件传输，保留实验室已验收配置，不盲目覆盖。未来修改的 Isaac 扩展 Python 位于包外时也须单独列入同步清单。
+
+两机已有的 `robot_description/meshes/`、`robot_description/usd/`、`robot_description/env/`、大型 USD/mesh/贴图/环境资源既不参与日常 Git，也不参与日常 rsync，不删除或覆盖；确需修改时单独指定文件。无需 Git LFS 或对静态资产做 SHA-256 检测。`v2/outputs/`、完整 NPZ/CSV、历史 evidence、构建产物和系统 ROS 依赖不做日常源码同步。用户说明实验室电脑未使用本地 Codex Agent：无需迁移会话或 `~/.codex/`，个人电脑的 Codex 历史独立保留。
+
+下一轮先最小修正 `env_noetic.sh` 的双机兼容，保留实验室现场场景和配置，不凭推测恢复 `ros_probe.py`、`scene_loader.py` 历史版本；两端 SSH 建立后再比较实际所需源码，按 `SYNC_FILES.md` 轻量同步。库内 `v2/docs/V2_PRP_RUNBOOK.md` 是此手册的副本；外部主报告 `/home/robot/digitaltwin/项目报告.md` 保持原位，不由该仓库自动同步。
+
+
+### Gazebo + RViz 联合回放：尚未实现
+
+2026-11-19 独立 11511 Master 的 Gazebo 预检发现六轴 PID 缺省报错与 CSV 初始关节位置不一致；影响尚待验证，联合回放协调器、实际状态镜像及完整实验未完成。现有 `./v2/scripts/view_v2.sh` / `play-file` 仍只作参考轨迹 RViz 预览，不能控制 Gazebo。不要把 Gazebo 和 RViz 分别显示参考动画视为实际状态同步。详情：`/home/robot/digitaltwin/research_management/evidence/V2_PRP_GAZEBO_REPLAY_20261119/REPORT.md`。
+
+
+### CSV 的 Gazebo 联合回放：实验原型，尚未验收
+
+2026-11-20 在隔离 `11511` 环境执行了一条单段 CSV。`--gazebo-csv` 原型可驱动 Gazebo，但 TF/反馈时间配对超过 40 ms 的样本存在，RViz 实际显示、暂停同步及场景 origin 尚未验收；请勿用于机器人或视为正式功能。现有 `./v2/scripts/view_v2.sh` 参考预览用法不变。实验命令、依赖和证据详见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_CSV_REPLAY_20261120/REPORT.md`。
+
+
+### Gazebo + RViz：启动参数修复，仍属实验模式（2026-11-20）
+
+`gazebo_replay.launch` 已为 world、CSV 首态及关节设置默认值，并自动启动仓储 OctoMap 加载和 RViz；需在独立 `11511` Master 上启动。实际测试中 Gazebo、控制器、场景服务、地图话题及 RViz 节点可用，但 MoveIt 启动记录缺少 `~moveit_controller_manager` 的 FATAL 和地图注入期间的 TF 变换错误，完整回放同步仍未通过验收。切勿将此实验入口用于真实机器人。
+
+终端 A/B/C 完整可复制的启动、回放、停止命令及注意事项见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_STARTUP_20261120/REPORT.md`。B 使用 `roslaunch cr5_car_moveit gazebo_replay.launch`；C 必须用 `view_v2.sh --gazebo-csv ... --replay-output ... --no-rviz` 复用 B 中的 RViz。默认参考轨迹预览入口不变。
+
+
+### 单窗口 Gazebo 展示（2026-11-20，视觉待验）
+
+联合 launch 默认创建唯一新 RViz；CSV 入口默认复用，不再需要 `--no-rviz`，如确需另开使用 `--replay-open-rviz`。联合配置默认 RobotModel 与 `/visual_hologram_map` PCD 开、OctoMap 关但可勾选；PlanningScene 地图由等待 TF 的加载器自动注入。实测节点、订阅和 PlanningScene 可用，但 RViz 实际画面及 OctoMap 开关尚待用户确认，历史时序偏差也未解决。A/B/C 完整命令及风险见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_SINGLE_RVIZ_20261120/REPORT.md`；仅用于独立仿真。
+
+
+### V2 原布局派生的 Gazebo 单窗口（2026-11-20）
+
+联合 launch 从 `v2_g.rviz` 派生实际状态配置，默认显示 Gazebo RobotModel 和固定 PCD，OctoMap 默认关闭但可勾选，参考动画关闭。CSV 入口默认复用窗口；`--replay-open-rviz` 才另开。环境就绪不等于 CSV 已开始，终端 C 才进行对位和实际回放。独立 Master 的三终端命令、实际节点结果和未解决的 RViz 模型报错及同步限制见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_V2_LAYOUT_20261120/REPORT.md`。视觉观察由用户完成。
+
+
+### 联合地图显示更正（2026-11-20）
+
+取代上一节“默认固定 PCD”的说明：联合 RViz 默认使用原 V2 的 `V2 warehouse occupied centers`（`/octomap_point_cloud_centers`），继承原 `v2_g.rviz` 的颜色及点大小；独立 `Fixed warehouse OctoMap` 仍默认隐藏且不影响 PlanningScene。显示数据来自原 `warehouse_cropped.bt` 的 octomap_server，不再默认发布彩色 `warehouse.pcd`。重启联合 launch 生效，三终端命令不变；颜色和地面效果由用户本人确认。时序分析与限制见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_MAP_DELAY_20261120/REPORT.md`。
+
+
+### Gazebo 联合展示与 V2 参考预览（2026-11-20）
+
+普通 `./v2/scripts/view_v2.sh` 使用原 RViz-only 预览：V2_G 订阅 `/v2/display_trajectory`，Trajectory_TOTG 订阅 `/move_group/display_planned_path`，可用于参考轨迹显示；不驱动 Gazebo。`play-file` 按上文要求读取带初始状态等关联资料的标准单段 CSV，不能直接读取整体 NPZ。
+
+联合展示使用独立 11511 Master 与 Gazebo：终端 A 运行 `roscore -p 11511`；终端 B 运行 `roslaunch cr5_car_moveit gazebo_replay.launch`（两个终端均先 source Noetic 与实际工作区 setup，导出 `ROS_MASTER_URI=http://127.0.0.1:11511`、`ROS_HOME=/tmp/v2_csv_replay_ros`）；终端 C 在包根导出 `V2_MASTER_URI=$ROS_MASTER_URI` 后运行：
+
+```bash
+OUT="v2/outputs/manual-replay-$(date +%Y%m%d-%H%M%S)"
+./v2/scripts/view_v2.sh --gazebo-csv v2/outputs/V2-20261114-SIGNED-P2-DISPLAY/G/trajectory.csv --replay-output "$OUT"
+```
+
+A/B/C 的完整环境加载与停止命令见本手册前文；B 仅准备环境，C 才会对位并驱动仿真。只有 B 默认打开 RViz，C 默认复用；必要时可显式 `--replay-open-rviz`。输入可换成同格式单段 CSV；不支持 NPZ，未验收完整多目标 Gazebo 播放。联合显示使用固定 `warehouse_cropped.bt` 的 `/octomap_point_cloud_centers` 和实际 RobotModel；独立 OctoMap 默认隐藏，可在 Displays 勾选而不改变 PlanningScene。联合模式不加载 V2_G、Trajectory_TOTG 或 MotionPlanning 参考动画。结束先 Ctrl-C 自己的 C、B，再仅停止自己启动的 A，不关闭 11411。
+
+用户报告手动回放中 Gazebo 与 RViz 运动一致，这是使用观察；已有数据中 TF 相对参考拟合约 30 ms，时戳与仿真/GUI 真值关系未确定，不作同步精度或动力学闭环声明。源码同步不包括 `v2/outputs`、模型 mesh/USD 或大型场景；另一台机器需已有 ROS Noetic、Gazebo、MoveIt、catkin overlay、仓储 world/机器人模型和本地 CSV，地图 `map/warehouse_cropped.bt` 随仓库提供。详见 `SYNC_FILES.md`。

@@ -1,0 +1,32 @@
+<launch>
+  <!-- Isolated simulation only: never start this on a robot or existing planning master. -->
+  <arg name="world" default="$(find aws_robomaker_small_warehouse_world)/worlds/no_roof_small_warehouse.world"/>
+  <arg name="world_pose" default="-x 0.6137880894082111 -y 4.592474832442562 -z 0.1 -Y 1.491573828057455"/>
+  <arg name="initial_joint_positions" default="-J joint1 -0.1682730308707566 -J joint2 0.38810949918072524 -J joint3 0.6241083783994398 -J joint4 -1.0076204963488571 -J joint5 -0.2416764860072119 -J joint6 0.0014833294136662"/>
+  <arg name="octomap" default="$(find cr5_car_moveit)/map/warehouse_cropped.bt"/>
+  <arg name="rviz" default="true"/>
+  <include file="$(find cr5_car_moveit)/launch/gazebo.launch">
+    <arg name="world_name" value="$(arg world)"/>
+    <arg name="world_pose" value="$(arg world_pose)"/>
+    <arg name="initial_joint_positions" value="$(arg initial_joint_positions)"/>
+  </include>
+  <include file="$(find cr5_car_moveit)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="false"/>
+  </include>
+  <group ns="move_group/planning_pipelines">
+    <include file="$(find cr5_car_moveit)/launch/planning_pipeline.launch.xml">
+      <arg name="pipeline" value="ompl"/>
+    </include>
+  </group>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="v2_replay_world_to_odom" args="0 0 0 0 0 0 world odom"/>
+  <node pkg="octomap_server" type="octomap_server_node" name="v2_replay_octomap" args="$(arg octomap)">
+    <param name="frame_id" value="odom"/>
+  </node>
+  <node pkg="moveit_ros_move_group" type="move_group" name="move_group" output="screen">
+    <param name="allow_trajectory_execution" value="false"/>
+    <param name="default_planning_pipeline" value="ompl"/>
+    <param name="publish_monitored_planning_scene" value="true"/>
+  </node>
+  <node pkg="cr5_car_moveit" type="replay_scene_loader.py" name="v2_replay_scene_loader" output="screen"/>
+  <node if="$(arg rviz)" pkg="cr5_car_moveit" type="replay_rviz.py" name="v2_replay_rviz" output="screen"/>
+</launch>
