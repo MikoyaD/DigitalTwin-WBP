@@ -1,5 +1,6 @@
 """Bounded, read-only discovery of V2 trajectories for research preview."""
 import json
+import csv as csv_module
 import math
 import re
 from pathlib import Path
@@ -128,7 +129,7 @@ def preview_status(result, collision):
     return 'UNVALIDATED'
 
 
-def load_preview_csv(csv):
+def load_preview_csv(csv, summary_only=False):
     """Locate actual parent metadata; neither status nor hash is a display gate."""
     csv=canonical(csv); result_path=csv.with_name('result.json')
     result=read(result_path) if result_path.is_file() else {}
@@ -170,7 +171,27 @@ def load_preview_csv(csv):
             transform.rotation.x,transform.rotation.y,transform.rotation.z,transform.rotation.w)
     if not all(math.isfinite(v) for v in values) or abs(sum(v*v for v in values[3:])-1)>1e-6:
         raise ValueError('INVALID_INITIAL_PLANAR_TRANSFORM')
-    times,q,columns=read_csv(csv)
+    if summary_only:
+        # Discovery only: inspect the first and final source row. Playback still
+        # performs the original complete finite/time-order validation.
+        with csv.open(newline='') as stream:
+            reader=csv_module.DictReader(stream)
+            header=reader.fieldnames or []
+            first=next(reader)
+        columns=(['q_'+n for n in NAMES] if 'q_world_car/x' in header
+                 else ['x','y','theta']+list(NAMES[3:]))
+        if len(set(header))!=len(header) or any(c not in header for c in ['time_s']+columns):
+            raise ValueError('CSV_REQUIRES_TIME_AND_NINE_POSITIONS')
+        with csv.open('rb') as stream:
+            stream.seek(0,2); size=stream.tell(); stream.seek(max(0,size-65536))
+            last=stream.read().decode('utf-8').splitlines()[-1]
+        end=dict(zip(header,next(csv_module.reader([last]))))
+        times=(float(first['time_s']),float(end['time_s']))
+        q=tuple(tuple(float(row[c]) for c in columns) for row in (first,end))
+        if not all(math.isfinite(x) for x in times) or times[0]<0 or times[-1]<=times[0] or not all(math.isfinite(x) for row in q for x in row):
+            raise ValueError('INVALID_CSV_ENDPOINTS')
+    else:
+        times,q,columns=read_csv(csv)
     first=parent['path']['q'][0]
     if any(abs(q[0][i]-first[i])>1e-3 for i in (0,1,3,4,5,6,7,8)) or abs(math.remainder(q[0][2]-first[2],2*math.pi))>1e-3:
         raise ValueError('TRAJECTORY_START_DOES_NOT_MATCH_PARENT_ROBOT_STATE')
@@ -190,7 +211,7 @@ def load_minimal(folder, algorithm='G'):
     return load_preview_csv(Path(folder)/algorithm/'trajectory.csv')
 
 
-def discover_minimal(root=V2/'outputs'):
+def discover_minimal(root=V2/'outputs', summary_only=False):
     root=Path(root)
     if not root.exists():return {},[]
     found={};errors=[]
@@ -201,7 +222,12 @@ def discover_minimal(root=V2/'outputs'):
             if any(part.startswith('.') for part in csv.relative_to(folder).parts):continue
             variant=csv.parent
             try:
-                meta,_=load_preview_csv(csv)
-                found[meta['name']]=dict(format='preview',csv=csv,run=folder,summary=meta)
+                meta,_=load_preview_csv(csv,summary_only=summary_only)
+                name=meta['name']
+                if name in found:
+                    name=folder.name+'/'+name
+                if name in found:
+                    name=folder.name+'/'+str(csv.relative_to(folder).parent)
+                found[name]=dict(format='preview',csv=csv,run=folder,summary=meta)
             except Exception as exc:errors.append((str(variant.relative_to(root)),str(exc)))
     return found,errors

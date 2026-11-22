@@ -196,8 +196,8 @@ def register(args):
 
 
 class Session:
-    def __init__(self, registry, publish, model_check=lambda meta,folder: None, runs_dir=None):
-        self.registry=registry; self.publish=publish; self.model_check=model_check; self.runs_dir=runs_dir; self.aliases={}
+    def __init__(self, registry, publish, model_check=lambda meta,folder: None, runs_dir=None, summary_only=False):
+        self.registry=registry; self.publish=publish; self.model_check=model_check; self.runs_dir=runs_dir; self.summary_only=summary_only; self.aliases={}
         self.available={}; self.current=None; self.refresh()
 
     def refresh(self):
@@ -206,7 +206,7 @@ class Session:
         if self.runs_dir is not None:
             from .run_discovery import discover_runs,discover_minimal
             autos,auto_errors=discover_runs(self.runs_dir);errors+=auto_errors
-            minimal,minimal_errors=discover_minimal(self.runs_dir.parent);errors+=minimal_errors
+            minimal,minimal_errors=discover_minimal(self.runs_dir.parent,summary_only=self.summary_only);errors+=minimal_errors
             autos.update(minimal)
             identities={};merged={}
             for name,entry in autos.items():

@@ -41,3 +41,7 @@ V2_PRP_CONFIG_MODE=1 bash --noprofile --norc -c 'source v2/scripts/env_noetic.sh
 2. 不凭推测恢复 `ros_probe.py`、`scene_loader.py` 的历史版本；如实际报错，再根据当前源码、两端差异与错误证据决定是否修改。
 3. 两端 SSH 连接建立后，在**不覆盖**对方的前提下比较所需源码与配置的实际差异；再按这份清单进行轻量 Git 同步。比较前保存两边未提交的独有修改；不使用强制推送、`reset --hard` 或直接覆盖。
 4. 不引入 Git LFS、复杂分支审批流程或大量自动检查。本次仅调整方案，未修改 `env_noetic.sh`，未连接另一台机器、同步文件或执行 PHG1。
+
+## 2026-11-22 交互展示与交接
+
+同步 `v2/docs/AI_HANDOVER.md`、`V2_RELEASES.md`、运行手册和 `v2/scripts/gazebo_interactive.py` 等正式小型源码；完整本地任务 NPZ、`v2/outputs/plots/plot_index.csv` 及图片、evidence 仍不进日常 Git。若迁移研究证据，应在两机先核对具体任务和空间后，单独复制所需报告、父路径、冻结几何、时间律及最终轨迹；不要覆盖现有资源。工作区外唯一主报告 `/home/robot/digitaltwin/项目报告.md` 和根 `AGENTS.md` 各自保留，Git 克隆不会自动包含；仓库交接文件提供可独立阅读的研究上下文和外部路径索引。Isaac 扩展位于本包之外，未来只单独同步真实修改过的 Python，静态资源不随 Git/rsync。

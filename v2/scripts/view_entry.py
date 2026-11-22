@@ -2,6 +2,7 @@
 import argparse
 import os
 import subprocess
+import sys
 from pathlib import Path
 import yaml
 from .runtime_v2 import V2,start
@@ -20,6 +21,19 @@ def main():
         from .gazebo_csv_replay import run
         if args.replay_open_rviz and args.no_rviz:parser.error('--replay-open-rviz conflicts with --no-rviz')
         return run(args.gazebo_csv,args.replay_output,args.replay_open_rviz)
+    # Preserve all legacy argument-bearing invocations; the new menu is the
+    # no-argument entry only, before rospy connects to either master.
+    if len(sys.argv)==1:
+        while True:
+            try: choice=input('展示模式：1 RViz参考轨迹 | 2 Gazebo+RViz实际状态 | q 退出 > ').strip().lower()
+            except EOFError:return 0
+            if choice in ('q','quit'):return 0
+            if choice=='1':break
+            if choice=='2':
+                from .gazebo_interactive import interactive_gazebo
+                interactive_gazebo()
+                continue
+            print('请选择 1、2 或 q。',flush=True)
     start(yaml.safe_load(Path(args.config).read_text()),for_display=True)
     rviz=None
     try:

@@ -418,3 +418,33 @@ OUT="v2/outputs/manual-replay-$(date +%Y%m%d-%H%M%S)"
 A/B/C 的完整环境加载与停止命令见本手册前文；B 仅准备环境，C 才会对位并驱动仿真。只有 B 默认打开 RViz，C 默认复用；必要时可显式 `--replay-open-rviz`。输入可换成同格式单段 CSV；不支持 NPZ，未验收完整多目标 Gazebo 播放。联合显示使用固定 `warehouse_cropped.bt` 的 `/octomap_point_cloud_centers` 和实际 RobotModel；独立 OctoMap 默认隐藏，可在 Displays 勾选而不改变 PlanningScene。联合模式不加载 V2_G、Trajectory_TOTG 或 MotionPlanning 参考动画。结束先 Ctrl-C 自己的 C、B，再仅停止自己启动的 A，不关闭 11411。
 
 用户报告手动回放中 Gazebo 与 RViz 运动一致，这是使用观察；已有数据中 TF 相对参考拟合约 30 ms，时戳与仿真/GUI 真值关系未确定，不作同步精度或动力学闭环声明。源码同步不包括 `v2/outputs`、模型 mesh/USD 或大型场景；另一台机器需已有 ROS Noetic、Gazebo、MoveIt、catkin overlay、仓储 world/机器人模型和本地 CSV，地图 `map/warehouse_cropped.bt` 随仓库提供。详见 `SYNC_FILES.md`。
+
+### 统一交互入口（2026-11-22，取代上一节中“无参数直接进入 RViz-only”）
+
+```bash
+cd /home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit
+./v2/scripts/view_v2.sh
+```
+
+输入 `1` 进入原 11411 RViz 参考轨迹交互，沿用 `list`、`refresh`、`play 编号`、`play-file 绝对路径`、`replay`、`quit`；已有含参数的 RViz-only 用法不变。V2_G 订阅 `/v2/display_trajectory`，Trajectory_TOTG 订阅 `/move_group/display_planned_path`；二者是参考，不表示仿真执行。
+
+输入 `2` 进入 11511 Gazebo+RViz：如果端口空闲，入口启动本次 ROS Master 和联合 launch，一个实际机器人 RViz；如果端口已有 Master，只有必要 Gazebo、MoveIt、控制器状态、固定地图、TF 及 RViz 接口均就绪时复用，否则报错而不接管。环境启动不等于运动，输入 `play 编号` 才对齐并执行对应 CSV，`replay` 再播、`list`/`refresh` 重新列出、`quit` 返回模式选择。退出本次菜单只停止它自己启动的 11511 进程；预先存在的 11511 和 11411 进程不会被主动停止。源目录按现有 V2 注册表及 outputs 扫描，列出单段/模块和多目标子段，明确子段不是完整任务；输出状态需查看所属报告。首次扫描只快速检查 CSV 首尾和元数据，实际播放前仍进行完整 CSV 校验。仅支持原协调器能够读取的标准九维有时间 CSV；整体 NPZ 不支持。轨迹目录不随 Git 克隆，需在本机保留；选择显示不等于轨迹安全或实际执行通过。
+
+**高级三终端方式保留**，在 Ubuntu 图形环境中每个终端先执行：
+
+```bash
+source /opt/ros/noetic/setup.bash
+source /home/robot/digitaltwin/zzs_ws/devel/setup.bash --extend
+export ROS_MASTER_URI=http://127.0.0.1:11511 ROS_HOME=/tmp/v2_csv_replay_ros
+```
+
+终端 A：`roscore -p 11511`。终端 B：`roslaunch cr5_car_moveit gazebo_replay.launch`，只准备环境、加载固定地图并开一个 RViz，不播放。终端 C：
+
+```bash
+cd /home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit
+export V2_MASTER_URI=http://127.0.0.1:11511
+OUT="v2/outputs/manual-replay-$(date +%Y%m%d-%H%M%S)"
+./v2/scripts/view_v2.sh --gazebo-csv v2/outputs/V2-20261114-SIGNED-P2-DISPLAY/G/trajectory.csv --replay-output "$OUT"
+```
+
+C 才会开始对位和运动，默认不另开 RViz；如确需第二窗口可显式 `--replay-open-rviz`。Displays 中 `Gazebo actual state` 与原 V2 固定占据中心点云默认显示，独立 `Fixed warehouse OctoMap` 可勾选、默认关闭；关闭显示不删除场景。依次 Ctrl-C 本人终端 C、B、A，不停止外部 11411 或别人的窗口。运行记录为 `state.csv`；异常及模拟时钟/TF/控制器就绪情况看终端和日志。手动视觉观察由用户进行；已有 30 ms TF 对参考拟合不等于 GUI 延迟或底盘动力学闭环。
