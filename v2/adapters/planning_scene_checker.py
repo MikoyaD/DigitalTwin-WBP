@@ -35,7 +35,7 @@ class PlanningSceneChecker:
     def __init__(self,namespace=''):
         self.namespace=namespace.rstrip('/')
 
-    def check(self,phases,export=None,include_geometry=True):
+    def check(self,phases,export=None,include_geometry=True,geometry_samples=None):
         result=dict(status='UNKNOWN',reason='not connected',checked_states=0,failures=[],
                     coverage='discrete full RobotState; not continuous collision guarantee',resolution=dict(xy_m=.005,angle_rad=.01,half_spacing_pass=True))
         valid=None
@@ -66,7 +66,7 @@ class PlanningSceneChecker:
             result.update(scene_sha256=digest,scene_snapshot_hex=original.hex(),model_sha256=sha256((urdf+'\n'+srdf).encode()).hexdigest(),
                           robot_description=urdf,robot_description_semantic=srdf)
             if include_geometry:
-                states,locations=sample_phases(phases)
+                states,locations=sample_phases(phases) if geometry_samples is None else geometry_samples
             else:
                 require(export is not None,'COLLISION_INPUT_MISSING','geometry and export both absent')
                 states=np.empty((0,9));locations=[]

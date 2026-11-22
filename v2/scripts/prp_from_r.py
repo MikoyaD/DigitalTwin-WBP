@@ -15,6 +15,31 @@ from .tm_feedback_hg import ChartView
 from ..geometry.tm_rho_feedback_frozen import thaw
 from ..adapters.planning_scene_checker import PlanningSceneChecker,wire
 
+def check_geometry_batches(phases,expected,urdf,srdf):
+ from ..adapters.planning_scene_checker import sample_phases
+ try:states,locations=sample_phases(phases)
+ except Exception as exc:
+  return {'status':'UNKNOWN','reason':type(exc).__name__+': '+str(exc),'checked_states':0,
+          'failures':[],'batches':[],'geometry_total_states':None}
+ if not len(states):
+  return {'status':'UNKNOWN','reason':'EMPTY_GEOMETRY_SAMPLE_SET','checked_states':0,
+          'failures':[],'batches':[],'geometry_total_states':0}
+ gr=None;done=0;batch=8000;retried=False;attempts=[];total_checked=0
+ while done<len(states):
+  end=min(done+batch,len(states));r=PlanningSceneChecker().check(phases,include_geometry=True,geometry_samples=(states[done:end],locations[done:end]));total_checked+=r['checked_states']
+  same_batch=bool(r.get('scene_snapshot_hex')) and bytes.fromhex(r['scene_snapshot_hex'])==expected
+  model_batch=r.get('robot_description')==urdf and r.get('robot_description_semantic')==srdf
+  attempts.append({'start':done,'end':end,'status':r['status'],'reason':r['reason'],'checked_states':r['checked_states'],'scene_equal':same_batch,'model_equal':model_batch})
+  if r['status']=='UNKNOWN' and 'COLLISION_TIME_BUDGET' in r['reason'] and same_batch and model_batch and not retried:
+   batch=4000;retried=True;continue
+  gr=r
+  if r['status']!='PASS' or not same_batch or not model_batch:break
+  done=end
+ gr['checked_states']=total_checked;gr['batches']=attempts;gr['geometry_total_states']=len(states)
+ if done!=len(states) and gr['status']=='PASS':gr['status']='UNKNOWN';gr['reason']='GEOMETRY_BATCH_SCENE_OR_MODEL_MISMATCH'
+ return gr
+
+
 def finalize_direct(p0,p1=None):
  """Keep analytic C parameters, discard only this invocation's dense bundles."""
  g=Path(p0)/'G';source=g/'trajectory.arrays';thin=g/'time_law.arrays'
@@ -121,10 +146,10 @@ def main(argv=None):
    from ..geometry.tm_frozen import verify_geometry
    verify_geometry(block,path,geo['construction'])
    phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)]
-   print('R_GEOMETRY_COLLISION_START',flush=True);gs=time.perf_counter();gr=PlanningSceneChecker().check(phases,include_geometry=True)
+   print('R_GEOMETRY_COLLISION_START',flush=True);gs=time.perf_counter();gr=check_geometry_batches(phases,expected,urdf,srdf)
    same=bool(gr.get('scene_snapshot_hex')) and bytes.fromhex(gr['scene_snapshot_hex'])==expected
    model=gr.get('robot_description')==urdf and gr.get('robot_description_semantic')==srdf
-   geom={'status':gr['status'] if same and model else 'UNKNOWN','reason':gr['reason'],'checked_states':gr['checked_states'],'failures':gr['failures'],'wall_s':time.perf_counter()-gs,'scene_equal':same,'model_equal':model}
+   geom={'status':gr['status'] if same and model else 'UNKNOWN','reason':gr['reason'],'checked_states':gr['checked_states'],'failures':gr['failures'],'wall_s':time.perf_counter()-gs,'scene_equal':same,'model_equal':model,'batches':gr['batches'],'geometry_total_states':gr['geometry_total_states']}
    result['geometry_collision']=geom;print('R_GEOMETRY_COLLISION',json.dumps(geom),flush=True)
    (out/'geometry_collision.json').write_text(json.dumps(geom,indent=2));save()
    if geom['status']!='PASS':

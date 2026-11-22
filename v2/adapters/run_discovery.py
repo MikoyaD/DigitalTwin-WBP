@@ -158,6 +158,13 @@ def load_preview_csv(csv, summary_only=False):
     elif (stage.parent/'summary.json').is_file():
         root=stage.parent;source=Path(read(root/'summary.json').get('geometry',''))
         if not source.is_absolute():source=root/source
+    elif csv.with_name(csv.name+'.storage.json').is_file():
+        storage=read(csv.with_name(csv.name+'.storage.json'))
+        if storage.get('dense_reconstruction')!='g1_fixed_geometry_v1' or not storage.get('geometry'):
+            raise ValueError('MISSING_PARENT_PATH_AND_INITIAL_ROBOT_STATE: provide matching V2 source metadata')
+        # The geometry association was verified against every dense source row
+        # before compaction; still check model, planar frame and initial state below.
+        root=stage;source=Path(storage['geometry'])
     else:raise ValueError('MISSING_PARENT_PATH_AND_INITIAL_ROBOT_STATE: provide matching V2 source metadata')
     source=canonical(source);parent=read(source/'parent_path.json');schema=parent['path']['schema']
     if tuple(schema['joint_names'])!=NAMES or schema['reference_point']!='car_link':raise ValueError('NINE_DOF_SCHEMA_MISMATCH')
@@ -202,6 +209,11 @@ def load_preview_csv(csv, summary_only=False):
     first=parent['path']['q'][0]
     if any(abs(q[0][i]-first[i])>1e-3 for i in (0,1,3,4,5,6,7,8)) or abs(math.remainder(q[0][2]-first[2],2*math.pi))>1e-3:
         raise ValueError('TRAJECTORY_START_DOES_NOT_MATCH_PARENT_ROBOT_STATE')
+    storage_note=csv.with_name(csv.name+'.storage.json')
+    if storage_note.is_file():
+        note=read(storage_note)
+        if str(note.get('method','')).startswith('original_dense_rows'):
+            result=dict(result,display_sampling=True)
     collision_path=stage/'collision.json'
     if stage.name=='recommended' and stage.parent.name=='P1' and (stage.parent.parent/'collision.json').is_file():
         collision_path=stage.parent.parent/'collision.json'

@@ -45,3 +45,7 @@ V2_PRP_CONFIG_MODE=1 bash --noprofile --norc -c 'source v2/scripts/env_noetic.sh
 ## 2026-11-22 交互展示与交接
 
 同步 `v2/docs/AI_HANDOVER.md`、`V2_RELEASES.md`、运行手册和 `v2/scripts/gazebo_interactive.py` 等正式小型源码；完整本地任务 NPZ、`v2/outputs/plots/plot_index.csv` 及图片、evidence 仍不进日常 Git。若迁移研究证据，应在两机先核对具体任务和空间后，单独复制所需报告、父路径、冻结几何、时间律及最终轨迹；不要覆盖现有资源。工作区外唯一主报告 `/home/robot/digitaltwin/项目报告.md` 和根 `AGENTS.md` 各自保留，Git 克隆不会自动包含；仓库交接文件提供可独立阅读的研究上下文和外部路径索引。Isaac 扩展位于本包之外，未来只单独同步真实修改过的 Python，静态资源不随 Git/rsync。
+
+## 2026-11-22 阶段基线与外部数据
+
+Git 同步源码、配置及文档，不同步 `v2/outputs`、研究 evidence 或模型资产。五目标任务目录后验 29818880 B 不含复用的外部首两段检查点和共享场景；若要在另一台复现该**实验资料**而非仅运行源码，需单独、经用户指定传输对应 outputs 与 `research_management/evidence/V2_PRP_FIVE_RECOVERY_STORAGE_20261122/` 和 `V2_PRP_STORAGE_COLLISION_OPT_20261122/`。历史 G1 稠密重建依赖其 sidecar 所指定的历史几何与时间律，不能只拷 CSV 就宣称能重建。大型静态资源各机保留，不做日常 Git/rsync；无须迁移 Codex 会话或引入 LFS。

@@ -5,6 +5,7 @@ import numpy as np
 from ..geometry.tm_rho_feedback_frozen import thaw
 from ..scripts.tm_feedback_hg import ChartView
 from ..adapters.planning_scene_checker import PlanningSceneChecker
+from .g1_dense_recovery import read_numeric_rows
 
 ROOT=Path(__file__).resolve().parents[2]
 H=ROOT/'v2/outputs/V2-20261030-000922-single_goal_05_TM_RHO_FEEDBACK-RRTstar'
@@ -17,7 +18,7 @@ def main():
  try:
   import rospy
   rospy.init_node('g1_p01_collision',anonymous=True,disable_signals=True)
-  block=thaw(json.loads((Path(a.geometry)/'geometry.json').read_text()));phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)];q=np.loadtxt(str(dest/'trajectory.csv'),delimiter=',',skiprows=1,usecols=range(1,10));expected=Path(a.scene_snapshot).read_bytes()
+  block=thaw(json.loads((Path(a.geometry)/'geometry.json').read_text()));phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)];q=read_numeric_rows(dest,a.geometry)[:,1:10];expected=Path(a.scene_snapshot).read_bytes()
   i=0
   while i<len(q):
    end=min(i+20000,len(q));r=PlanningSceneChecker().check(phases,dict(q=q[i:end]),include_geometry=(not a.geometry_once or i==0));same=bool(r.get('scene_snapshot_hex') and bytes.fromhex(r['scene_snapshot_hex'])==expected)
