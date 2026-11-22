@@ -49,8 +49,9 @@ def finalize(root,work,stage,source_r=None):
   p=out/'PRP/P0/G/result.json'
   if p.is_file():
    data=json.loads(p.read_text());data['time_law_npz']=str(thin);data['numeric_verification']=str(out/'PRP/P0/cases/seg01/C/verification.json');p.write_text(json.dumps(data,indent=2))
- for f in ('summary.json','recommended_law.json','error.log'):_copy(pr/'P1'/f,out/'PRP/P1'/f)
+ for f in ('summary.json','recommended_law.json','fast_law.json','error.log'):_copy(pr/'P1'/f,out/'PRP/P1'/f)
  for f in ('trajectory.npz','trajectory.csv','result.json'):_copy(pr/'P1/recommended'/f,out/'PRP/P1/recommended'/f)
+ for f in ('trajectory.csv','result.json'):_copy(pr/'P1/fast'/f,out/'PRP/P1/fast'/f)
  for f in ('IK/result.json','IK/target.json','IK/p_endpoint_fk.json','IK/final_fk.json','P/error.log','error.log'):_copy(work/f,out/f)
  # Rewrite retained descriptor paths to the final location. Keep status and
  # numerical evidence, but never leave a time-law pointer into deleted work.
@@ -74,13 +75,9 @@ def finalize(root,work,stage,source_r=None):
   if p.is_symlink():raise ValueError('SYMLINK_IN_OUTPUT: '+str(p))
   st=p.stat();logical+=st.st_size;key=(st.st_dev,st.st_ino)
   if key not in seen:allocated+=st.st_blocks*512;seen.add(key)
- csv=out/'PRP/P1/recommended/trajectory.csv';omitted=False
- if (logical>BUDGET or allocated>BUDGET) and csv.is_file():
-  if not (record and thin.is_file() and (out/'PRP/P1/recommended_law.json').is_file()):raise RuntimeError('CANNOT_REGENERATE_CSV_PRESERVING_WORK')
-  csv.unlink();omitted=True
-  for p in (out/'PRP/result.json',out/'result.json'):
-   if p.is_file():
-    d=json.loads(p.read_text());d['display_csv_omitted_due_to_budget']=True;p.write_text(json.dumps(d,indent=2))
+ # The final CSV is now a required deliverable, not a disposable cache.
+ # Report an exceeded budget instead of removing the only display trajectory.
+ omitted=False
  # Work contains only data produced by this invocation and is removed only
  # after all final deliverables have been successfully copied.
  shutil.rmtree(work)

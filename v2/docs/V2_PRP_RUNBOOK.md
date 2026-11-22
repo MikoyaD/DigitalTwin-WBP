@@ -448,3 +448,13 @@ OUT="v2/outputs/manual-replay-$(date +%Y%m%d-%H%M%S)"
 ```
 
 C 才会开始对位和运动，默认不另开 RViz；如确需第二窗口可显式 `--replay-open-rviz`。Displays 中 `Gazebo actual state` 与原 V2 固定占据中心点云默认显示，独立 `Fixed warehouse OctoMap` 可勾选、默认关闭；关闭显示不删除场景。依次 Ctrl-C 本人终端 C、B、A，不停止外部 11411 或别人的窗口。运行记录为 `state.csv`；异常及模拟时钟/TF/控制器就绪情况看终端和日志。手动视觉观察由用户进行；已有 30 ms TF 对参考拟合不等于 GUI 延迟或底盘动力学闭环。
+
+### 2026-11-22：CSV 输出与轨迹列表约定
+
+本节取代早期“联合模式仅支持单目标 CSV”的表述：标准多目标任务级 CSV 也可选择。用户终端记录了 `V2-20261113-FIVE-GOAL-FINAL-RECOMMENDED/task/trajectory.csv` 完整回放 225.725087 s、5638 状态、协调器退出码 0；`v2/outputs/manual-replay-uppnr9ck/state.csv` 现场有 5638 行反馈。该用户记录不改变原规划的验证状态，也不证明任意多目标轨迹或物理闭环。
+
+`./v2/scripts/view_v2.sh` 的两个模式共用扫描器，显示 `实验目录/相对模块路径 | 单目标/多目标/多目标组分 | 状态`；`play 编号` 时输出绝对路径，Gazebo 对明确碰撞失败的条目先确认。可扫描历史 `V2-*`、`PRP-*` 与 `prp_yaml*` 中的有效 `trajectory.csv`，包含推荐、fast 与模块轨迹；源轨迹已验证的展示抽样不等于该 CSV 已经碰撞认证。存在模型、起点或关联元数据缺失时会列出 INVALID，不自动代换模型。`list`、`refresh`、`play`、`replay`、`quit` 与高级直调方式不变。
+
+新 PRP 正式 YAML 运行目录采用 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-规划器`。新 Link6 联合 IK 的任务是 IKPRP；从保存 P/R 续算不执行新 IK，名称为 PRP，规划器取保存父路径。新多目标路径包括 `segments/segment_01/attempt_01/result/{P,R,PRP/P0,PRP/P1}` 和 `task/trajectory.csv`；失败重试递增 attempt，具体状态以 result.json 为准。单目标推荐与快速 CSV 在 `result/PRP/P1/{recommended,fast}/trajectory.csv`，快速候选并不自动获得推荐候选的碰撞验收。旧非 PRP 算法及历史目录不重命名。
+
+任务级 CSV 由本轮运行的拼接数组直接写出，使用标准 time/q/v/a/jerk 九维列和 segment/chart/direction；包含实际运动与驻留行，不从历史 NPZ 转换。最终 CSV 不再因 30 MiB 上限被删除；如超限，storage 报告真实失败。NPZ 已被用户列为废弃格式，扫描和展示不把它作为输入；现有求解和碰撞链内部仍依赖其数组和解析参数，本轮并未移除这些内部依赖或历史文件。新输出模块已用已有 CSV 数值做写入与两种读取器检查，尚未在本次运行一次真实五目标规划验证完整新目录。

@@ -13,7 +13,7 @@ import xmlrpc.client
 from pathlib import Path
 
 from .runtime_v2 import V2
-from ..adapters.trajectory_viewer import REGISTRY, Session, read_csv, NAMES
+from ..adapters.trajectory_viewer import REGISTRY, Session, read_csv, NAMES, trajectory_kind, STATUS_LABELS
 
 URI = 'http://127.0.0.1:11511'
 
@@ -84,7 +84,8 @@ class GazeboSession(Session):
     def refresh(self):
         # Reuse the original registry + run scanner and its deduplication. Only
         # display files that the existing Gazebo CSV reader can interpret.
-        with contextlib.redirect_stdout(io.StringIO()):
+        report=io.StringIO()
+        with contextlib.redirect_stdout(report):
             super().refresh()
         compatible = {}
         for name, item in self.available.items():
@@ -102,22 +103,20 @@ class GazeboSession(Session):
         self.aliases = {alias: target for alias, target in self.aliases.items() if target in compatible}
         print('可回放 CSV（与原 V2 扫描器相同来源；NPZ 不支持）：', flush=True)
         for index, (name, item) in enumerate(compatible.items(), 1):
-            path = self.csv_path(item)
-            parts = [x.lower() for x in path.parts]
-            if any(x.startswith(('segment_', 'seg0')) for x in parts):
-                kind = '多目标子段/模块，非完整任务'
-            elif path.parent.name.lower() == 'task':
-                kind = '任务级 CSV，完成状态以结果报告为准'
-            else:
-                kind = '单段/模块，完成状态以结果报告为准'
-            status = item.get('summary', {}).get('validation_status', '注册轨迹') if isinstance(item, dict) else '注册轨迹'
-            print('%d. %s | %s | %s | %s' % (index, name, kind, status, path), flush=True)
+            status = item.get('summary', {}).get('validation_status', 'UNVALIDATED') if isinstance(item, dict) else 'UNVALIDATED'
+            print('%d. %s | %s | %s' % (index, name, trajectory_kind(name,item), STATUS_LABELS.get(status,'未验证')), flush=True)
+        for line in report.getvalue().splitlines():
+            if line.startswith('INVALID '):print(line,flush=True)
 
     def play(self, name):
         name = self.aliases.get(name, name)
         if name not in self.available:
             raise ValueError('UNKNOWN_TRAJECTORY: ' + name)
-        path = self.csv_path(self.available[name])
+        item=self.available[name]
+        if isinstance(item,dict) and item.get('summary',{}).get('validation_status')=='COLLISION_FAIL':
+            if input('该轨迹碰撞失败，仍在仿真中回放？[y/N] ').strip().lower() not in ('y','yes'):
+                print('已取消回放。',flush=True);return
+        path = self.csv_path(item)
         read_csv(path)  # Same nine-position, monotonically timed CSV contract as the replay.
         output = Path(tempfile.mkdtemp(prefix='manual-replay-', dir=str(V2 / 'outputs')))
         print('GAZEBO_SELECTED', name, str(path), 'OUTPUT', str(output), flush=True)

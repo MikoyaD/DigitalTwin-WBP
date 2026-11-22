@@ -12,6 +12,11 @@ def _path(value,base):
  if value.startswith('package://'):raise ValueError('UNSUPPORTED_PACKAGE_URI: '+value)
  p=Path(os.path.expanduser(value));return (p if p.is_absolute() else base/p).resolve()
 
+def experiment_name(mode, uses_ik, planner, now=None):
+ if mode not in ('single','multi') or not isinstance(planner,str) or not planner or not all(c.isalnum() or c=='_' for c in planner):raise ValueError('INVALID_EXPERIMENT_IDENTITY')
+ now=now or datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+ return 'V2-%s-%s-%s-%s'%(now.strftime('%Y%m%d-%H%M%S'),mode.upper(),'IKPRP' if uses_ik else 'PRP',planner)
+
 
 def run(config_path, control=None):
  control=control if control is not None else {}
@@ -76,7 +81,7 @@ def run(config_path, control=None):
  chosen=os.environ.get('V2_CALLER_MASTER_URI') or runtime.get('master_uri') or runtime_v2.URI
  if not chosen.startswith(('http://','https://')):raise ValueError('INVALID_MASTER_URI')
  os.environ['ROS_MASTER_URI']=chosen;os.environ['V2_MASTER_URI']=chosen
- root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name='PRP-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f');run_dir=root/name;run_dir.mkdir(exist_ok=False);control['run_dir']=str(run_dir)
+ root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name=experiment_name('single',stage=='new',planner['id'] if stage=='new' else parent['planner_id']);run_dir=Path(control['run_dir_override']) if control.get('run_dir_override') else root/name;run_dir.mkdir(parents=True,exist_ok=False);control['run_dir']=str(run_dir)
  effective={'schema':c['schema'],'input_stage':inp['stage'],'input_path':str(source) if source else None,'scene_map':str(map_path),'parent_map_relocated':relocated_map,'scene_mode':scene['planning_scene'],'scene_snapshot':str(snapshot) if snapshot else None,'master_uri':chosen,'master_source':'environment' if os.environ.get('V2_CALLER_MASTER_URI') else 'config_or_default','python':sys.executable,'overlay_setup':os.environ.get('V2_EXTRA_SETUP') or None,'limits':limits,'algorithms':alg,'task':task,'output_root':str(root),'result_dir':str(run_dir),'compact_output':True,'source_config':str(config_path),'requested_config':c}
  (run_dir/'effective_config.json').write_text(json.dumps(effective,ensure_ascii=False,indent=2));print('PRP_CONFIG',json.dumps(effective,ensure_ascii=False),flush=True)
  work=run_dir/'.work';work.mkdir();result_dir=run_dir/'result';code=1

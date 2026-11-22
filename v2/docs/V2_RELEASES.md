@@ -17,3 +17,7 @@ Git 提交、分支、标签标识源码快照；`v2-prp-*` 是项目阶段标�
 本仓库远端 `origin=git@github.com:MikoyaD/DigitalTwin-WBP.git`，使用 `master`。阶段参考：五目标目录 `v2/outputs/prp_yaml/PRP-MULTI-20261119-020714-832492/` 及仓库外 `research_management/evidence/V2_PRP_FIVE_FRESH_20261119/`；数值/离散碰撞不等同连续碰撞或真机结果。Gazebo CSV 及地图时序见 `V2_GAZEBO_CSV_REPLAY_20261120/`、`V2_GAZEBO_MAP_DELAY_20261120/`。这些输出与证据不随本仓库 clone。
 
 推荐使用本分支最新提交，执行 `git log --oneline --decorate -5` 和 `git status` 确认现场状态。只读历史可 `git show v2-prp-five-goal-20261119:v2/configs/global.yaml`；需要在历史版本做独立工作时先保存现有修改，再 `git switch --detach v2-prp-five-goal-20261119`，完成后 `git switch master`。不要移动标签或覆盖未提交修改。
+
+## 2026-11-22：CSV 输出与历史扫描后续变更
+
+在 `v2-prp-gazebo-display-20261122` 之后，PRP 正式 YAML 新实验统一时间、任务、实际链路与规划器命名；扫描兼容旧 `V2-*`、`PRP-*` 及 `prp_yaml*` CSV，按三类显示与碰撞状态排序。新多目标将拼接数组写入 `task/trajectory.csv`，CSV 不因容量预算被删除。用户将 NPZ 标为废弃输入，但当前规划内核仍使用已有 NPZ 中间数据；不能将其写成已彻底去除。用户终端有旧五目标 CSV 225.725087 s 回放完成证据。本次更改的实际提交以 `git log` 为准，未移动五目标与 Gazebo 既有标签；未重新运行新五目标完整链路。

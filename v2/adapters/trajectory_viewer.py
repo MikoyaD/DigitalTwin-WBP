@@ -195,6 +195,28 @@ def register(args):
     print('REGISTERED', args.name, meta['validation_status'], flush=True)
 
 
+STATUS_LABELS={'VERIFIED':'已验证','ARCHIVED_NUMERICAL_AND_DISCRETE_COLLISION_PASS':'已验证','COLLISION_PENDING':'碰撞待验','COLLISION_FAIL':'碰撞失败','COLLISION_NOT_ATTEMPTED':'未进行碰撞验证','COLLISION_UNKNOWN':'碰撞未知','UNVALIDATED':'未验证','NUMERICAL_FAIL':'未验证','VISUALIZATION_ONLY':'未验证','DENSE_SOURCE_VERIFIED_DISPLAY_ONLY':'源轨迹已验证，仅展示'}
+
+def trajectory_kind(name,item):
+    if isinstance(item,dict):
+        path=Path(item.get('csv') or (item['run']/item['summary']['csv']['path']))
+        parts=[p.lower() for p in path.parts]
+        if path.parent.name.lower()=='task':return '多目标'
+        if 'segments' in parts or any(p.startswith(('segment_','seg0')) for p in parts):return '多目标组分'
+        # These archived recovery cases explicitly document their target segment.
+        if any(x in name.upper() for x in ('FIFTH-P1-RECOMMENDED-RECOVERY','THIRD-P4-PHG1-RECOVERED','PRP-SEG2-SCP','PRP-R04-')):return '多目标组分'
+    return '单目标'
+
+def trajectory_order(name,item):
+    match=re.search(r'(20\d{6})(?:[-_](\d{6}))?',name)
+    stamp=(match.group(1)+(match.group(2) or '000000')) if match else '99999999999999'
+    if match and not match.group(2) and isinstance(item,dict):
+        created=item['summary'].get('created_beijing','')
+        digits=''.join(c for c in created[:19] if c.isdigit())
+        if len(digits)==14 and digits[:8]==match.group(1):stamp=digits
+    segment=re.search(r'(?:segment_|seg0?)(\d+)',name,re.I)
+    return (stamp,int(segment.group(1)) if segment else (999 if '/task' in name.lower() else 0),name.lower())
+
 class Session:
     def __init__(self, registry, publish, model_check=lambda meta,folder: None, runs_dir=None, summary_only=False):
         self.registry=registry; self.publish=publish; self.model_check=model_check; self.runs_dir=runs_dir; self.summary_only=summary_only; self.aliases={}
@@ -219,17 +241,17 @@ class Session:
                 if identity in identities and m.get('validation_status')=='ARCHIVED_NUMERICAL_AND_DISCRETE_COLLISION_PASS':
                     self.aliases[name]=identities[identity]
                 else:merged[name]=folder
-            self.available=dict(sorted(merged.items()))
+            self.available=dict(sorted(merged.items(),key=lambda x:trajectory_order(*x)))
         print('Available trajectories:',flush=True)
         for i,name in enumerate(self.available,1):
             item=self.available[name]
             if isinstance(item,dict):
                 m=item['summary'];created=m.get('created_beijing',m.get('created_utc','UNKNOWN'))
-                print('%d. %s | %s | task=%s | variant=%s | %.6fs | %s'%(i,name,created,m['task_id'],m['algorithm'],m['duration_s'],m['validation_status']),flush=True)
+                print('%d. %s | %s | %s'%(i,name,trajectory_kind(name,item),STATUS_LABELS.get(m['validation_status'],'未验证')),flush=True)
             else:
                 m=json.loads((item/'metadata.json').read_text())
                 times,_,_=read_csv(resolve(m['csv'],item),m['position_columns'])
-                print('%d. %s [registered] | time=%s | task=%s | variant=%s | run=%s | %.6fs | %s'%(i,name,m.get('created_utc','UNKNOWN'),m.get('task_id',name),m.get('algorithm','UNKNOWN'),m.get('original_run_id') or 'EXTERNAL',times[-1],m.get('validation_status','VISUALIZATION_ONLY')),flush=True)
+                print('%d. %s | %s | %s'%(i,name,trajectory_kind(name,item),STATUS_LABELS.get(m.get('validation_status'),'未验证')),flush=True)
         for name,error in errors:
             print('INVALID %s: %s'%(name,error),flush=True)
 
@@ -261,11 +283,12 @@ class Session:
             from .run_discovery import load_auto,load_preview_csv
             folder=item['run']
             if item.get('format')=='preview':meta,data=load_preview_csv(item['csv'])
-            else:meta,data=load_auto(folder,item['task'],item['root'])
+            else:meta,data=load_auto(folder,item['task'],item['root'],csv_only=True)
         else:folder=item;meta,data=load_entry(folder)
         self.model_check(meta,folder)
         self.publish(build_message(data))
         self.current=name
+        print('PLAY_PATH',str(resolve(meta['csv'],folder)),flush=True)
         print('VISUALIZATION_ONLY: playback does not imply numerical or collision validation',flush=True)
         print('PLAY name=%s points=%d duration_s=%.9f status=%s topic=%s'%
               (name,len(data.time_s),data.time_s[-1],meta['validation_status'],TOPIC),flush=True)

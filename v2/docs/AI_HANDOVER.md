@@ -74,3 +74,11 @@
 |跨机与历史资料|源码 Git；模型、场景、大量数据、本机证据和主报告另行保留，不能自动覆盖另一台。|
 
 **唯一推荐下一轮任务**：固定已验五目标，做“解析参数 + 采样配方”可携带重建对照实验，检查行数、t/q/v/a/jerk、事件、接缝和字节占用，保留原 NPZ 并诚实区分数值一致与逐位无损；具体方案参见 `V2_PRP_BASELINE_REVIEW_20261119/REPORT.md`。不在本轮实现。若用户更改研究目标，服从新任务；论文结论仍需对照原论文和审稿意见、使用可复核数据，不能从展示与单次案例推断统计成功率。
+
+## 2026-11-22：输出与回放更新（取代上文单段限定）
+
+用户已对旧前向完整五目标 `V2-20261113-FIVE-GOAL-FINAL-RECOMMENDED/task/trajectory.csv` 实际回放，终端记录 225.725087 s、5638 状态及退出码 0；现场 `v2/outputs/manual-replay-uppnr9ck/state.csv` 有 5638 状态。该证据仅属于该 CSV 的 Gazebo 混合回放，不代表现有整体 NPZ 被支持或规划碰撞合同发生变化。
+
+用户确定 NPZ 为废弃格式：展示扫描不读取历史 NPZ，不从 NPZ 转换 CSV；现有规划内部计算和碰撞流程仍有 NPZ 依赖，本轮未移除它。当前正式 YAML 新结果命名 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-实际规划器`，P/R 续算为 PRP、新 Link6 IK 为 IKPRP；旧非 PRP 实验和历史路径保留。推荐/fast CSV 在 `result/PRP/P1/{recommended,fast}/trajectory.csv`，多目标按 `segments/segment_XX/attempt_XX/result/…`，整体为 `task/trajectory.csv`。整体 CSV 由本轮任务拼接数组直接写出，保留状态与驻留；不删除 CSV 以迎合 30 MiB，超额必须报告。新五目标全流程和实际体积尚未运行验证，不能把旧任务的结果写成新代码的运行成果。
+
+两种展示模式复用同一 CSV 扫描与三类名称：单目标、多目标、多目标组分。历史父路径缺失、模型引用错误或没有 CSV 的实验不自动伪造可播放输入；碰撞失败轨迹在 Gazebo 前要求用户确认。最新实际扫描、用户日志与测试见仓库外 `research_management/evidence/V2_OUTPUT_SCAN_STANDARD_20261122/`。

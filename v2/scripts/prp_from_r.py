@@ -35,7 +35,7 @@ def display_csv(dest, source, p0, output_path=None):
  geo=json.loads((source/'geometry.json').read_text());block=thaw(geo);base_file=p0/'G/trajectory.npz'
  if not base_file.is_file():base_file=p0/'G/time_law.npz'
  base=NestedBase(base_file)
- spec=json.loads((dest.parent/'recommended_law.json').read_text());k=np.asarray(spec['nodes']);x=np.asarray(spec['lambda_values'])
+ spec=json.loads((dest.parent/(dest.name+'_law.json')).read_text());k=np.asarray(spec['nodes']);x=np.asarray(spec['lambda_values'])
  def inverse(t):
   return 0. if t<=0 else base.end if t>=base.T else brentq(lambda r:base.density.integrate(np.array([r]))[0]-t,0.,base.end,xtol=2e-12)
  rknots=np.array([inverse(t) for t in k]);cuts=[]
@@ -80,6 +80,8 @@ def main(argv=None):
   if summary['status']!='NUMERIC_ONLY_COLLISION_PENDING' or summary['stages']['recommended_numeric']!='PASS':raise RuntimeError('P1_NUMERIC_NOT_PASS')
   dest=p1/'recommended';z=np.load(dest/'trajectory.npz',allow_pickle=False)
   result['csv']=display_csv(dest,source,p0)
+  if (p1/'fast/trajectory.npz').is_file() and (p1/'fast_law.json').is_file():
+   result['fast_csv']=display_csv(p1/'fast',source,p0)
   from .plot_trajectory import read_csv as plot_read
   from ..adapters.trajectory_viewer import read_csv as viewer_read
   pdata=plot_read(dest/'trajectory.csv');vt,vq,_=viewer_read(dest/'trajectory.csv')

@@ -37,7 +37,7 @@ def verified(path,root):
     return path
 
 
-def load_auto(run,task,root=RUNS):
+def load_auto(run,task,root=RUNS,csv_only=False):
     root=canonical(root);run=canonical(run)
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*',task):raise ValueError('INVALID_TASK_ID')
     manifest=read(run/'manifest.json')
@@ -57,9 +57,11 @@ def load_auto(run,task,root=RUNS):
     folder=canonical(entry['g_dir'])
     if folder.name!='g_'+task:raise ValueError('UNKNOWN_BACKEND_LAYOUT')
     resultpath=verified(folder/'result.json',root);csvpath=verified(folder/'trajectory.csv',root)
-    arrays=verified(folder/'phase_arrays.npz',root);source=verified(entry['source'],root)
+    arrays=None if csv_only else verified(folder/'phase_arrays.npz',root);source=verified(entry['source'],root)
     result=read(resultpath);capturepath=verified(source.parent/'capture_result.json',root);capture=read(capturepath)
-    for key,path in [('g_result_sha256',resultpath),('csv_sha256',csvpath),('phase_arrays_sha256',arrays),('source_input_sha256',source)]:
+    checks=[('g_result_sha256',resultpath),('csv_sha256',csvpath),('source_input_sha256',source)]
+    if arrays is not None:checks.append(('phase_arrays_sha256',arrays))
+    for key,path in checks:
         if val.get(key)!=digest(path):raise ValueError('VALIDATION_INPUT_HASH_MISMATCH: '+key)
     if entry.get('result_sha256')!=digest(resultpath) or entry.get('csv_sha256')!=digest(csvpath):raise ValueError('G_INDEX_HASH_MISMATCH')
     if result.get('source_input_sha256')!=digest(source) or result.get('numerical_status')!='PASS':raise ValueError('G_SOURCE_MISMATCH')
@@ -86,7 +88,7 @@ def load_auto(run,task,root=RUNS):
     times,q,columns=read_csv(csvpath)
     if abs(times[-1]-result['duration_s'])>1e-7:raise ValueError('DURATION_MISMATCH')
     from xml.etree import ElementTree as ET
-    meta=dict(name=run.name+'/'+task+'/G',model_id=ET.parse(models[0]).getroot().attrib['name'],frame_id=schema['frame_id'],base_joint='world_car',joint_order=list(NAMES),algorithm='G',original_run_id=run.name,task_id=task,duration_s=times[-1],created_utc=manifest.get('created_utc','UNKNOWN'),validation_status='ARCHIVED_NUMERICAL_AND_DISCRETE_COLLISION_PASS',csv=reference(csvpath,run),urdf=reference(models[0],run),srdf=reference(models[1],run),initial_state_source=reference(capturepath,run),position_columns=columns)
+    meta=dict(name=run.name+'/'+task+'/G',model_id=ET.parse(models[0]).getroot().attrib['name'],frame_id=schema['frame_id'],base_joint='world_car',joint_order=list(NAMES),algorithm='G',original_run_id=run.name,task_id=task,duration_s=times[-1],created_utc=manifest.get('created_utc','UNKNOWN'),validation_status='DENSE_SOURCE_VERIFIED_DISPLAY_ONLY' if csv_only else 'ARCHIVED_NUMERICAL_AND_DISCRETE_COLLISION_PASS',csv=reference(csvpath,run),urdf=reference(models[0],run),srdf=reference(models[1],run),initial_state_source=reference(capturepath,run),position_columns=columns)
     state=state_and_model(meta,run)
     data=DisplayInput(run,task,times,q,(),(),schema['frame_id'],meta['model_id'],'',tuple((x['kind'],x['duration_s']) for x in result['phases']),result['path']['parent_path_hash'],state)
     return meta,data
@@ -107,7 +109,7 @@ def discover_runs(root=RUNS):
                 task=entry.get('task','')
                 try:
                     if entry.get('status')!='PASS':continue
-                    meta,_=load_auto(run,task,root)
+                    meta,_=load_auto(run,task,root,csv_only=True)
                     found[meta['name']]=dict(run=run,task=task,root=root,summary=meta)
                 except Exception as exc:errors.append((run.name+'/'+task,str(exc)))
         except Exception as exc:errors.append((run.name,str(exc)))
@@ -116,14 +118,15 @@ def discover_runs(root=RUNS):
 
 def preview_status(result, collision):
     status=str(result.get('status','')).upper()
+    if collision.get('status')=='FAIL':return 'COLLISION_FAIL'
     if 'FAIL' in status or result.get('numerical_status')=='FAIL':return 'NUMERICAL_FAIL'
     numerical=(result.get('numerical_status')=='PASS' or status in
-               ('PASS','FULL_G_PASS','INDEPENDENT_NUMERICAL_PASS','NUMERICAL_PASS_COLLISION_PENDING','COLLISION_NOT_PASS'))
+               ('PASS','TASK_PASS','FULL_G_PASS','INDEPENDENT_NUMERICAL_PASS','NUMERICAL_PASS_COLLISION_PENDING','COLLISION_NOT_PASS'))
     if numerical and collision.get('status')=='PASS':
         return 'DENSE_SOURCE_VERIFIED_DISPLAY_ONLY' if result.get('display_sampling') else 'VERIFIED'
     if numerical and collision.get('status')=='FAIL':return 'COLLISION_FAIL'
     if numerical and collision.get('status')=='UNKNOWN' and collision.get('reason')!='deferred to final G1 trajectory':return 'COLLISION_UNKNOWN'
-    if numerical and result.get('display_sampling') and result.get('collision')=='NOT_ATTEMPTED' and not collision:
+    if numerical and result.get('collision')=='NOT_ATTEMPTED' and not collision:
         return 'COLLISION_NOT_ATTEMPTED'
     if numerical:return 'COLLISION_PENDING'
     return 'UNVALIDATED'
@@ -134,7 +137,11 @@ def load_preview_csv(csv, summary_only=False):
     csv=canonical(csv); result_path=csv.with_name('result.json')
     result=read(result_path) if result_path.is_file() else {}
     stage=csv.parent; root=None; source=None
-    if stage.name=='task' and result.get('source_segment')=='segment_01':
+    if stage.name=='task' and result.get('source_parent'):
+        root=stage.parent;source=(stage/Path(result['source_parent'])).parent
+    elif stage.name in ('recommended','fast') and stage.parent.name=='P1' and (stage.parent.parent/'P0/parent_path.json').is_file():
+        root=stage.parent.parent;source=root/'P0'
+    elif stage.name=='task' and result.get('source_segment')=='segment_01':
         root=stage.parent;source=root/'segment_01'/'H'
     elif (stage.parent/'parent_path.json').is_file():
         root=stage.parent;source=root
@@ -195,8 +202,16 @@ def load_preview_csv(csv, summary_only=False):
     first=parent['path']['q'][0]
     if any(abs(q[0][i]-first[i])>1e-3 for i in (0,1,3,4,5,6,7,8)) or abs(math.remainder(q[0][2]-first[2],2*math.pi))>1e-3:
         raise ValueError('TRAJECTORY_START_DOES_NOT_MATCH_PARENT_ROBOT_STATE')
-    collision_path=stage/'collision.json';collision=read(collision_path) if collision_path.is_file() else result.get('collision',{})
+    collision_path=stage/'collision.json'
+    if stage.name=='recommended' and stage.parent.name=='P1' and (stage.parent.parent/'collision.json').is_file():
+        collision_path=stage.parent.parent/'collision.json'
+    collision=read(collision_path) if collision_path.is_file() else result.get('collision',{})
     if not isinstance(collision,dict):collision={}
+    if stage.name=='recommended' and stage.parent.name=='P1':
+        prp_result=stage.parent.parent/'result.json'
+        info=read(prp_result).get('csv',{}) if prp_result.is_file() else {}
+        if isinstance(info,dict) and info.get('method')=='original_dense_rows':
+            result=dict(result,display_sampling=True)
     name=root.name+'/'+str(csv.relative_to(root).parent)
     meta=dict(name=name,task_id=parent['task_id'],algorithm=stage.name,original_run_id=root.name,
               created_beijing=parent.get('created_beijing','UNKNOWN'),validation_status=preview_status(result,collision),
@@ -215,19 +230,21 @@ def discover_minimal(root=V2/'outputs', summary_only=False):
     root=Path(root)
     if not root.exists():return {},[]
     found={};errors=[]
+    folders=[]
     for folder in sorted(root.iterdir()):
-        if not folder.name.startswith('V2-') or not folder.is_dir():continue
+        if not folder.is_dir():continue
+        if folder.name.startswith(('V2-','PRP-')):folders.append(folder)
+        elif folder.name.startswith('prp_yaml'):folders.extend(p for p in sorted(folder.iterdir()) if p.is_dir() and p.name.startswith(('V2-','PRP-')))
+    for folder in folders:
         if folder.is_symlink():errors.append((folder.name,'SYMLINK_REFUSED'));continue
         for csv in sorted(folder.rglob('trajectory.csv')):
             if any(part.startswith('.') for part in csv.relative_to(folder).parts):continue
             variant=csv.parent
             try:
                 meta,_=load_preview_csv(csv,summary_only=summary_only)
-                name=meta['name']
-                if name in found:
-                    name=folder.name+'/'+name
-                if name in found:
-                    name=folder.name+'/'+str(csv.relative_to(folder).parent)
+                name=folder.name+'/'+str(csv.relative_to(folder).parent)
+                if name in found:name=str(folder.relative_to(root))+'/'+str(csv.relative_to(folder).parent)
+                if name in found:raise ValueError('DUPLICATE_TRAJECTORY_NAME: '+name)
                 found[name]=dict(format='preview',csv=csv,run=folder,summary=meta)
             except Exception as exc:errors.append((str(variant.relative_to(root)),str(exc)))
     return found,errors

@@ -5,6 +5,13 @@ import numpy as np
 import yaml
 from . import prp_global,prp_compact
 
+def write_task_csv(data,dest):
+ from .stage_v2 import HEADER
+ t=data['t'];q=data['q'];v=data['velocity'];a=data['acceleration'];j=data['jerk']
+ if len(t)<2 or np.any(np.diff(t)<=0):raise ValueError('TASK_CSV_TIME_NOT_INCREASING')
+ matrix=np.column_stack((t,q,v,a,j,data['segment'],data['chart'],data['direction']))
+ np.savetxt(dest,matrix,delimiter=',',fmt='%.17g',header=','.join(HEADER+['segment','chart_index','direction']),comments='')
+
 
 def run(config_path,c):
  task=c['task'];goals=task.get('targets');start=task.get('start_q');dwell=task.get('dwell_s')
@@ -14,7 +21,7 @@ def run(config_path,c):
   if set(g)!={'id','type','frame','link','position_m','quaternion_xyzw'} or g['type']!='link_pose' or g['frame']!='world' or g['link']!='Link6':raise ValueError('UNSUPPORTED_MULTI_GOAL')
  reuse=task.get('reuse_segments',[])
  if not isinstance(reuse,list) or len(reuse)>4 or any(not isinstance(x,dict) or set(x)!={'directory','fk_record','target_record'} for x in reuse):raise ValueError('INVALID_REUSED_SEGMENTS')
- base=config_path.parent;root=prp_global._path(c['output']['root'],base);root.mkdir(parents=True,exist_ok=True);run=root/('PRP-MULTI-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'));run.mkdir();(run/'segments').mkdir()
+ base=config_path.parent;root=prp_global._path(c['output']['root'],base);root.mkdir(parents=True,exist_ok=True);run=root/prp_global.experiment_name('multi',True,c['planner']['id']);run.mkdir();(run/'segments').mkdir()
  (run/'effective_config.yaml').write_text(yaml.safe_dump(c,allow_unicode=True,sort_keys=False));summary={'status':'PARTIAL','segments':[],'total_wall_s':None,'input_config':str(config_path),'goals':goals,'rho_policy':'22 then 36 fixed profile; bounded theta/rho recovery on exact infeasibility','dwell_s':1.0};t0=time.perf_counter();segments=[]
  def save():summary['total_wall_s']=time.perf_counter()-t0;(run/'result.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2))
  try:
@@ -37,9 +44,14 @@ def run(config_path,c):
     if cc['scene'].get('snapshot'):cc['scene']['snapshot']=str(prp_global._path(cc['scene']['snapshot'],base))
     temp=run/('segment_%02d_config.yaml'%i);temp.write_text(yaml.safe_dump(cc,allow_unicode=True,sort_keys=False));attempts=[]
     for attempt in range(1,int(os.environ.get('V2_PRP_MAX_ATTEMPTS','6'))+1):
-     ctl={'rho_fallback':36,'signed_recovery':True};code=prp_global.run(temp,ctl);folder=Path(ctl['run_dir'])
+     ctl={'rho_fallback':36,'signed_recovery':True,'run_dir_override':str(run/'segments'/('segment_%02d'%i)/('attempt_%02d'%attempt))};code=prp_global.run(temp,ctl);folder=Path(ctl['run_dir'])
      result_file=folder/'result/result.json';data=json.loads(result_file.read_text()) if result_file.is_file() else {};error_file=folder/'error.log';error=error_file.read_text()[-3000:] if error_file.is_file() else ''
      status=data.get('status','NO_RESULT');attempts.append({'attempt':attempt,'directory':str(folder),'exit_code':code,'status':status,'error':data.get('error') or error})
+     # Segment budget is not the task budget: retain a numerically and
+     # collision-accepted candidate even when its CSV makes it exceed 30 MiB.
+     sf=folder/'storage.json'
+     if code and status=='FIXED_SIGNED_R_SINGLE_PASS' and sf.is_file() and json.loads(sf.read_text()).get('status')=='OUTPUT_BUDGET_EXCEEDED':
+      attempts[-1]['segment_storage']='OUTPUT_BUDGET_EXCEEDED';code=0
      if code==0 and status=='FIXED_SIGNED_R_SINGLE_PASS':break
      # Retry only a new genuinely randomized P for candidate-dependent failures;
      # scene, runtime and interface errors must stop instead of being masked.
@@ -79,6 +91,8 @@ def run(config_path,c):
    allz={k:np.concatenate([r[k] for r in rows]) for k in rows[0]};t=allz['t'];q=allz['q'];v=allz['velocity'];a=allz['acceleration'];j=allz['jerk'];lat=-np.sin(q[:,2])*v[:,0]+np.cos(q[:,2])*v[:,1];lon=np.cos(q[:,2])*v[:,0]+np.sin(q[:,2])*v[:,1];direction=allz['direction'];tol=1e-7
    if np.any(np.diff(t)<=0) or np.max(abs(v))>.5+tol or np.max(abs(a))>1.+tol or np.max(abs(lat))>1e-6 or np.any(lon[direction>0]<-tol) or np.any(lon[direction<0]>tol) or np.any(abs(lon[direction==0])>tol):raise RuntimeError('TASK_NUMERIC_NOT_PASS')
    np.savez_compressed(run/'task_trajectory.npz',**allz)
+   taskdir=run/'task';taskdir.mkdir()
+   write_task_csv(allz,taskdir/'trajectory.csv')
    summary['task']={'numerical':'PASS','collision':'PASS_BY_SAME_SCENE_SEGMENTS_AND_REPEATED_HOLDS','collision_states':sum(x['collision']['checked_states'] for x in summary['segments']),'duration_s':float(t[-1]),'motion_s':float(t[-1]-5),'dwell_s':5.,'samples':len(t),'events':events,'velocity_peak':np.max(abs(v),axis=0).tolist(),'acceleration_peak':np.max(abs(a),axis=0).tolist(),'jerk_peak':np.max(abs(j),axis=0).tolist(),'jerk_timeweighted_mean':(sum(np.trapz(np.abs(z['jerk']),z['t'],axis=0) for z in segments)/t[-1]).tolist(),'lateral_max':float(np.max(abs(lat))),'scope':'discrete segment collision; holds reuse identical checked endpoint states'}
    # Each accepted segment used the same explicitly matched PlanningScene.
    # Keep one real snapshot, not five copies of the same OctoMap.
@@ -104,9 +118,13 @@ def run(config_path,c):
    for entry in summary['segments']:
     if entry.get('reused'):continue
     folder=Path(entry['directory'])
-    for f in (folder/'result/PRP/P1/recommended/trajectory.npz',folder/'result/PRP/P1/recommended/trajectory.csv'):
+    for f in (folder/'result/PRP/P1/recommended/trajectory.npz',):
      if f.is_file():f.unlink()
+   source=Path(summary['segments'][0]['directory'])/'result/P/parent_path.json'
+   if not source.is_file():raise RuntimeError('TASK_PARENT_METADATA_MISSING')
+   summary['task']['csv']={'path':str(taskdir/'trajectory.csv'),'bytes':(taskdir/'trajectory.csv').stat().st_size,'rows':len(t),'sampling':'all stitched states including holds'}
    summary['status']='SIGNED_FIVE_GOAL_TASK_PASS';save()
+   (taskdir/'result.json').write_text(json.dumps({'status':'TASK_PASS','source_parent':os.path.relpath(source,taskdir),'collision':{'status':'PASS','checked_states':summary['task']['collision_states']},'scope':summary['task']['scope']},ensure_ascii=False,indent=2))
  except Exception as ex:
   summary['failure_stage_or_reason']=repr(ex);(run/'error.log').write_text(traceback.format_exc());print(traceback.format_exc(),flush=True)
  save();logical,allocated=prp_compact._measure(run);summary['storage']={'logical_bytes':logical,'allocated_bytes':allocated,'budget_bytes':prp_compact.BUDGET,'status':'PASS' if max(logical,allocated)<=prp_compact.BUDGET else 'OUTPUT_BUDGET_EXCEEDED'};save();logical,allocated=prp_compact._measure(run);summary['storage'].update(logical_bytes=logical,allocated_bytes=allocated,status='PASS' if max(logical,allocated)<=prp_compact.BUDGET else 'OUTPUT_BUDGET_EXCEEDED');save();print('PRP_MULTI_RESULT',run,summary['status'],json.dumps(summary['storage']),flush=True)
