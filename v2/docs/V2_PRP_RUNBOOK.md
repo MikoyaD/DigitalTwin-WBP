@@ -1,20 +1,20 @@
 # V2-PRP 手动规划、显示与绘图手册
 
-本文基于实验室电脑 2026-11-19 的实际源码和已存运行证据。**本轮仅检查源码与文档，以下启动、规划、RViz 和 Gazebo 命令均未在本轮执行；标注为“依据源码，待实机验证”。** 规划结果是离线参考轨迹，不等于机器人控制或实际跟踪。已有五目标数值及离散碰撞结果为 193.672418 s，但容量超 30 MiB，正式入口退出码为 1。
+本文基于实验室电脑当前源码及已有运行证据；具体操作应以现场环境和下述各项验证范围为准。 规划结果是离线参考轨迹，不等于机器人控制或实际跟踪。历史五目标数值及离散碰撞结果为 193.672418 s，容量超 30 MiB；2026-11-22 新运行在第 1 段碰撞检查超时、未生成完整 CSV，详情见 `research_management/evidence/V2_PRP_FIVE_CSV_ENDTOEND_20261122/REPORT.md`。
 
 ## 先选你要做的事
 
 | 目的 | 入口/方式 | ROS Master | MoveIt/仓储场景 | RViz | Gazebo | 当前状态 |
 |---|---|---|---|---|---|---|
 | 已有 P→R、已有 R→P0、已有 R/P0→P1 数值 | 见 §2：`plan_v2.sh` 阶段入口和 `g1_general --numeric-only` | 不需要连接 | 不需要；仍读取本地模型与限制 | 不需要 | 不需要 | 代码路径支持；本轮未验证完全断网执行。碰撞待验 |
-| 新单目标/五目标正式规划 | §3：`plan_v2.sh --config ...` | 需要 | 需要，与 YAML 地图匹配 | 不需要 | 不需要 | 新 P 五目标已有数值/离散碰撞存档 PASS；容量例外 |
+| 新单目标/五目标正式规划 | §3：`plan_v2.sh --config ...` | 需要 | 需要，与 YAML 地图匹配 | 不需要 | 不需要 | 历史新 P 五目标数值/离散碰撞 PASS、容量超限；最新新运行首段碰撞 UNKNOWN，未完成 |
 | 已存单段 R/P→P0/P1 正式验收 | §3 的 YAML 或 §4 的直接 CLI | R/P0 数值可无；P1 完整验收需要 | 最终碰撞需要 | 不需要 | 不需要 | 已有相关单段存档；不自动证明新候选通过 |
 | 手动 MoveIt 交互规划/观察 | §5：附加 RViz MotionPlanning | 需要 | 需要 | 需要 | 不需要 | MoveIt GUI 入口；手动计划不是自动 V2-PRP 全链 |
-| 已存单段 CSV 预览 | §5：`view_trajectory.sh interactive` | 需要 | 需要匹配模型和初始状态；预览不执行碰撞 | 需要 | 不需要 | 只发布参考显示消息；读取 t/q，不保留 v/a 到消息 |
+| 已存单段或完整多目标 CSV 预览 | §5：`view_v2.sh` 选择 RViz-only | 需要 | 需要匹配模型和初始状态；预览不执行碰撞 | 需要 | 不需要 | 只发布参考显示消息；读取 t/q，不保留 v/a 到消息 |
 | 已存整体五目标 NPZ 预览 | 无正式直接入口 | — | — | — | — | **未支持**：不是 CSV，`play-file` 不能直接读取 |
 | 已有标准 CSV 画图 | §7：`plot_trajectory.py` | 不需要 | 不需要 | 不需要 | 不需要 | q/v/a 六面板、jerk 图；XY 另用文中小命令 |
 | Gazebo 中观察旧模型/MoveIt | §6：旧 launch | 需要 | 两者可同时有，但 Gazebo world 与仓储 PlanningScene 需另核对 | 可选/演示 launch 含 RViz | 需要 | 旧环境可启动代码；本轮未实机验证 V2 同步回放 |
-| 用 V2 轨迹真正驱动 Gazebo 整机 | 无已验正式适配 | — | — | — | — | **未支持/未验证**，不把旧 V1 模型位姿桥接当作已完成 |
+| V2 CSV 的 Gazebo 与 RViz 联合展示 | `view_v2.sh` 选择 Gazebo | 11511 | 固定场景 | 需要 | 需要 | 单段及一条旧完整五目标 CSV 已真实回放；属于模型位姿/关节位置混合回放，不是底盘动力学闭环 |
 
 > 下文命令示例在用户主动执行时会创建文件或启动节点。本轮未执行；源代码确认不等于你的当前机器场景、依赖或 GUI 已通过验证。
 
@@ -117,8 +117,8 @@ cp -n v2/configs/global.yaml v2/configs/local_prp.yaml
 
 YAML 的相对输入/输出路径相对配置文件所在目录；`package://cr5_car_moveit/...` 基于包路径。入口打印 `PRP_CONFIG` 和 `PRP_GLOBAL_RESULT` 或 `PRP_MULTI_RESULT`。常见结果：
 
-- 单段：YAML `output.root` 下 `PRP-*/effective_config.json`、`result/P`、`result/R`、`result/PRP/P0/G`、`result/PRP/P1/recommended/trajectory.npz`、`result/PRP/collision.json`、`storage.json`；紧凑 CSV 可能因容量省略。
-- 五目标：`PRP-MULTI-*/effective_config.yaml`、`result.json`、成功时的 `task_trajectory.npz` 与各段必要参数。务必同时检查 `status`、每段 FK/碰撞、`storage.status` 和 shell `$?`；`SIGNED_FIVE_GOAL_TASK_PASS` 可能伴随 `OUTPUT_BUDGET_EXCEEDED` 和退出码 1。
+- 单段：YAML `output.root` 下 `V2-*-SINGLE-*/effective_config.json`、`result/P`、`result/R`、`result/PRP/P0/G`、`result/PRP/P1/{recommended,fast}/trajectory.csv`、`result/PRP/collision.json`、`storage.json`；超过预算时如实报告而不删除 CSV。
+- 五目标：`V2-*-MULTI-IKPRP-*/effective_config.yaml`、`result.json`、成功时的 `task/trajectory.csv`、`segments/segment_XX/attempt_XX/result/` 与各段必要参数。务必同时检查 `status`、每段 FK/碰撞、`storage.status` 和 shell `$?`；`SIGNED_FIVE_GOAL_TASK_PASS` 可能伴随 `OUTPUT_BUDGET_EXCEEDED` 和退出码 1。
 
 ### 3.3 收尾
 
@@ -159,7 +159,7 @@ roslaunch cr5_car_moveit moveit_rviz.launch \
 
 ### 5.2 播放有完整关联信息的单段 CSV
 
-一次 §3 单目标规划结束后，若紧凑 CSV 未被容量机制省略，先在规划结果终端取得它的绝对路径，再用于下面的 `play-file`（不要把 R/P0 的 CSV 误作推荐 P1）：
+一次 §3 单目标规划结束后，先在规划结果终端取得推荐 CSV 的绝对路径，再用于下面的 `play-file`（不要把 R/P0 的 CSV 误作推荐 P1）：
 
 ```bash
 RUN=/绝对路径/本次单段PRP运行目录
@@ -227,15 +227,7 @@ roslaunch cr5_car_moveit demo_gazebo.launch enable_old_collector:=false
 
 ### 7.1 先获得可读 CSV
 
-单段成功运行若 `result/PRP/P1/recommended/trajectory.csv` 存在，直接使用。若被容量机制省略，可用**单段** YAML 结果运行目录导出到目录外（依据源码，待实机验证）：
-
-```bash
-RUN=/绝对路径/单段PRP运行目录
-CSV=/tmp/prp_single_display.csv
-./v2/scripts/plan_v2.sh --export-csv "$RUN" --csv-out "$CSV"
-```
-
-需要相应 R、P0 时间律、P1 λ 和密集 P1 NPZ；`CSV` 不可已存在且不可放进运行目录。它选择原始行供展示，不能取代密集轨迹碰撞证据。该命令不接受五目标 `task_trajectory.npz`。
+单目标直接使用 `result/PRP/P1/recommended/trajectory.csv`；五目标成功时使用 `task/trajectory.csv`。历史只有 NPZ 的任务不作转换。
 
 ### 7.2 六面板与 jerk
 
@@ -275,14 +267,14 @@ print(sys.argv[2])
 PY
 ```
 
-`/tmp/prp_xy_path.png` 如已存在会被覆盖，请改为自己的新路径。展示 CSV 的抽样连线不是连续碰撞认证。五目标整体 NPZ 当前不能直接输入六面板脚本或 `play-file`；**最小后续改进**是增加只读整体 NPZ→标准紧凑 CSV 的适配，保留全局时间、五目标事件、方向和必要极值，再用现有绘图/显示器，并明确预览插值不继承原碰撞验收。本轮不实现。
+`/tmp/prp_xy_path.png` 如已存在会被覆盖，请改为自己的新路径。展示 CSV 的抽样连线不是连续碰撞认证。历史五目标整体 NPZ 不能输入绘图器或 `play-file`；用户已弃用该交换格式，不从历史 NPZ 转换。新 PRP 任务直接生成标准整体 CSV。
 
 ## 8. 实际接口缺口与 Git 检查
 
 - **真实接口缺陷**：`plan_v2.sh` 的清洁环境不透传 `V2_PRP_MAX_ATTEMPTS`；多目标检查点跨进程也不会自动累计重试次数。
 - 单目标默认不带多目标 Signed R 恢复；部分相邻 MOVE 换向和多 chart 恢复尚不支持。
 - 已存 P/R 直接 CLI、viewer/runtime 旧包装器仍有旧工作区绝对路径；优先 global YAML，迁机前核对 overlay。
-- 整体 NPZ 没有现成标准 CSV 导出/单次完整轨迹预览；现有单段 CSV 外置导出后需要解决模型与初态关联。
+- 历史整体 NPZ 不用于展示；当前新任务直接输出 CSV，仍需保留模型与初态关联。
 - Gazebo 真实同步回放未完成；RViz 是预览，不是动力学或硬件执行。30 MiB 目标另行处理。
 
 ```bash
@@ -377,7 +369,7 @@ git switch master
 2026-11-19 独立 11511 Master 的 Gazebo 预检发现六轴 PID 缺省报错与 CSV 初始关节位置不一致；影响尚待验证，联合回放协调器、实际状态镜像及完整实验未完成。现有 `./v2/scripts/view_v2.sh` / `play-file` 仍只作参考轨迹 RViz 预览，不能控制 Gazebo。不要把 Gazebo 和 RViz 分别显示参考动画视为实际状态同步。详情：`/home/robot/digitaltwin/research_management/evidence/V2_PRP_GAZEBO_REPLAY_20261119/REPORT.md`。
 
 
-### CSV 的 Gazebo 联合回放：实验原型，尚未验收
+### 历史：CSV 的 Gazebo 联合回放首轮（当时尚未完成验收）
 
 2026-11-20 在隔离 `11511` 环境执行了一条单段 CSV。`--gazebo-csv` 原型可驱动 Gazebo，但 TF/反馈时间配对超过 40 ms 的样本存在，RViz 实际显示、暂停同步及场景 origin 尚未验收；请勿用于机器人或视为正式功能。现有 `./v2/scripts/view_v2.sh` 参考预览用法不变。实验命令、依赖和证据详见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_CSV_REPLAY_20261120/REPORT.md`。
 
@@ -389,7 +381,7 @@ git switch master
 终端 A/B/C 完整可复制的启动、回放、停止命令及注意事项见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_STARTUP_20261120/REPORT.md`。B 使用 `roslaunch cr5_car_moveit gazebo_replay.launch`；C 必须用 `view_v2.sh --gazebo-csv ... --replay-output ... --no-rviz` 复用 B 中的 RViz。默认参考轨迹预览入口不变。
 
 
-### 单窗口 Gazebo 展示（2026-11-20，视觉待验）
+### 历史：单窗口 Gazebo 展示（2026-11-20，当时视觉待验）
 
 联合 launch 默认创建唯一新 RViz；CSV 入口默认复用，不再需要 `--no-rviz`，如确需另开使用 `--replay-open-rviz`。联合配置默认 RobotModel 与 `/visual_hologram_map` PCD 开、OctoMap 关但可勾选；PlanningScene 地图由等待 TF 的加载器自动注入。实测节点、订阅和 PlanningScene 可用，但 RViz 实际画面及 OctoMap 开关尚待用户确认，历史时序偏差也未解决。A/B/C 完整命令及风险见 `/home/robot/digitaltwin/research_management/evidence/V2_GAZEBO_SINGLE_RVIZ_20261120/REPORT.md`；仅用于独立仿真。
 
@@ -406,7 +398,7 @@ git switch master
 
 ### Gazebo 联合展示与 V2 参考预览（2026-11-20）
 
-普通 `./v2/scripts/view_v2.sh` 使用原 RViz-only 预览：V2_G 订阅 `/v2/display_trajectory`，Trajectory_TOTG 订阅 `/move_group/display_planned_path`，可用于参考轨迹显示；不驱动 Gazebo。`play-file` 按上文要求读取带初始状态等关联资料的标准单段 CSV，不能直接读取整体 NPZ。
+普通 `./v2/scripts/view_v2.sh` 先选择 RViz-only 或 Gazebo 联合展示；其中 RViz-only 预览：V2_G 订阅 `/v2/display_trajectory`，Trajectory_TOTG 订阅 `/move_group/display_planned_path`，可用于参考轨迹显示；不驱动 Gazebo。`play-file` 按上文要求读取带初始状态等关联资料的标准单段 CSV，不能直接读取整体 NPZ。
 
 联合展示使用独立 11511 Master 与 Gazebo：终端 A 运行 `roscore -p 11511`；终端 B 运行 `roslaunch cr5_car_moveit gazebo_replay.launch`（两个终端均先 source Noetic 与实际工作区 setup，导出 `ROS_MASTER_URI=http://127.0.0.1:11511`、`ROS_HOME=/tmp/v2_csv_replay_ros`）；终端 C 在包根导出 `V2_MASTER_URI=$ROS_MASTER_URI` 后运行：
 
@@ -415,7 +407,7 @@ OUT="v2/outputs/manual-replay-$(date +%Y%m%d-%H%M%S)"
 ./v2/scripts/view_v2.sh --gazebo-csv v2/outputs/V2-20261114-SIGNED-P2-DISPLAY/G/trajectory.csv --replay-output "$OUT"
 ```
 
-A/B/C 的完整环境加载与停止命令见本手册前文；B 仅准备环境，C 才会对位并驱动仿真。只有 B 默认打开 RViz，C 默认复用；必要时可显式 `--replay-open-rviz`。输入可换成同格式单段 CSV；不支持 NPZ，未验收完整多目标 Gazebo 播放。联合显示使用固定 `warehouse_cropped.bt` 的 `/octomap_point_cloud_centers` 和实际 RobotModel；独立 OctoMap 默认隐藏，可在 Displays 勾选而不改变 PlanningScene。联合模式不加载 V2_G、Trajectory_TOTG 或 MotionPlanning 参考动画。结束先 Ctrl-C 自己的 C、B，再仅停止自己启动的 A，不关闭 11411。
+A/B/C 的完整环境加载与停止命令见本手册前文；B 仅准备环境，C 才会对位并驱动仿真。只有 B 默认打开 RViz，C 默认复用；必要时可显式 `--replay-open-rviz`。输入可换成符合标准的单段或完整多目标 CSV；不支持 NPZ。旧完整五目标 CSV 已有用户实际回放证据，不能泛化到所有任务。联合显示使用固定 `warehouse_cropped.bt` 的 `/octomap_point_cloud_centers` 和实际 RobotModel；独立 OctoMap 默认隐藏，可在 Displays 勾选而不改变 PlanningScene。联合模式不加载 V2_G、Trajectory_TOTG 或 MotionPlanning 参考动画。结束先 Ctrl-C 自己的 C、B，再仅停止自己启动的 A，不关闭 11411。
 
 用户报告手动回放中 Gazebo 与 RViz 运动一致，这是使用观察；已有数据中 TF 相对参考拟合约 30 ms，时戳与仿真/GUI 真值关系未确定，不作同步精度或动力学闭环声明。源码同步不包括 `v2/outputs`、模型 mesh/USD 或大型场景；另一台机器需已有 ROS Noetic、Gazebo、MoveIt、catkin overlay、仓储 world/机器人模型和本地 CSV，地图 `map/warehouse_cropped.bt` 随仓库提供。详见 `SYNC_FILES.md`。
 
