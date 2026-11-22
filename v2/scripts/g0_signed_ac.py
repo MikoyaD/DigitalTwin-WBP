@@ -6,11 +6,26 @@ from .stage_v2 import load_parent,limits_for,HEADER
 from ..geometry.tm_rho_feedback_frozen import thaw
 from ..geometry.tm_frozen import verify_geometry
 
-def write_trajectory_csv(folder):
- """Keep the ordinary G0 CSV interface, with original unmodified C rows."""
+def write_trajectory_csv(folder,block,geo,output_path=None):
+ """Save original C rows at event-aware display density; never change C."""
+ from .g1_display_sampling import select_storage_rows
+ from ..timing.g0_ac_geometry import chart_events
  with np.load(Path(folder)/'trajectory.npz',allow_pickle=False) as z:
   values=np.column_stack([z[k] for k in ('t','q','velocity','acceleration','jerk')])
-  np.savetxt(Path(folder)/'trajectory.csv',values,delimiter=',',fmt='%.17g',header=','.join(HEADER),comments='')
+  t=z['t'];u=z['u'];chart=z['chart'];direction=z['direction'];base=z['base_s'];indices={0,len(t)-1}
+  change=np.flatnonzero((chart[1:]!=chart[:-1])|(direction[1:]!=direction[:-1]))+1
+  for i in change:indices.update((int(i-1),int(i)))
+  for value in z['normalized_nodes']:
+   i=int(np.argmin(abs(base-value)))
+   if abs(base[i]-value)>1e-10:raise ValueError('P0_DENSITY_EVENT_MISSING')
+   indices.add(i)
+  for value in np.unique(np.concatenate([np.asarray(geo['construction']['progress'])]+[chart_events(c) for c in block.charts])):
+   i=int(np.argmin(abs(u-value)))
+   if abs(u[i]-value)>1e-9:raise ValueError('P0_GEOMETRY_EVENT_MISSING')
+   indices.add(i)
+  selector=np.column_stack((values,u,chart,np.where(direction==0,0,1),direction));ix=select_storage_rows(selector,t[sorted(indices)])
+  np.savetxt(Path(output_path) if output_path else Path(folder)/'trajectory.csv',values[ix],delimiter=',',fmt='%.17g',header=','.join(HEADER),comments='')
+  return {'source_rows':len(t),'rows':len(ix),'events':len(indices),'sampling':'original rows; time-law and geometry events, extrema, 50 Hz target and position-error refinement'}
 
 def run(source,out,defer_collision=False,numeric_only=False,reserved=False,compact_output=False):
  source=Path(source).resolve(); out=Path(out).resolve();start=time.perf_counter()
@@ -41,5 +56,6 @@ def run(source,out,defer_collision=False,numeric_only=False,reserved=False,compa
   # without writing a second dense file. They must be treated as immutable.
   os.link(cand,folder/'trajectory.npz')
  else:
-  shutil.copyfile(cand,folder/'trajectory.npz');write_trajectory_csv(folder)
- r={'status':'NUMERICAL_PASS_COLLISION_PENDING','full_g':'PENDING_COLLISION','collision':{'status':'NOT_ATTEMPTED'},'duration_s':verify['duration_s'],'time_law_type':'NESTED_C_V1','time_law_npz':str((folder/'trajectory.npz').resolve()),'algorithm':'signed_A_then_nested_C','compute_s':time.perf_counter()-start,'stages':runs,'numeric_verification':str((out/'cases/seg01/C/verification.json').resolve()),'compact_output':compact_output};(folder/'result.json').write_text(json.dumps(r,indent=2));(folder/'numerical_result.json').write_text(json.dumps(dict(r,numeric_details=verify),indent=2));return out,r
+  shutil.copyfile(cand,folder/'trajectory.npz')
+ csv=write_trajectory_csv(folder,block,geo)
+ r={'status':'NUMERICAL_PASS_COLLISION_PENDING','full_g':'PENDING_COLLISION','collision':{'status':'NOT_ATTEMPTED'},'duration_s':verify['duration_s'],'time_law_type':'NESTED_C_V1','time_law_npz':str((folder/'trajectory.npz').resolve()),'algorithm':'signed_A_then_nested_C','compute_s':time.perf_counter()-start,'stages':runs,'numeric_verification':str((out/'cases/seg01/C/verification.json').resolve()),'compact_output':compact_output,'csv':csv};(folder/'result.json').write_text(json.dumps(r,indent=2));(folder/'numerical_result.json').write_text(json.dumps(dict(r,numeric_details=verify),indent=2));return out,r

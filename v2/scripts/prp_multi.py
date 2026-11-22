@@ -5,6 +5,42 @@ import numpy as np
 import yaml
 from . import prp_global,prp_compact
 
+def load_independent_collision(folder, record_path, expected_start, goal, snapshot):
+ """Validate a saved candidate against its independently rerun collision record."""
+ from ..geometry.tm_rho_feedback_frozen import thaw
+ from ..adapters.planning_scene_checker import wire
+ import rospy
+ from moveit_msgs.srv import GetPlanningScene,GetPlanningSceneRequest
+ folder=Path(folder).resolve(strict=True);result=folder/'result';record=json.loads(Path(record_path).read_text())
+ if Path(record['candidate']).resolve(strict=True)!=result.resolve(strict=True) or record.get('baseline')!='PASS':raise RuntimeError('REUSE_COLLISION_RECORD_MISMATCH')
+ batches=record.get('batches',[]);n=record.get('trajectory_states');geo_count=record.get('geometry_states');i=0;count=0
+ for b in batches:
+  end=b.get('last_exclusive');expected=geo_count if i==0 else 0
+  if b.get('first')!=i or not isinstance(end,int) or end<=i or end>n or b.get('checked_states')!=expected+2*(end-i)-1 or b.get('status')!='PASS' or not b.get('scene_matches_saved') or b.get('failures'):raise RuntimeError('REUSE_COLLISION_COVERAGE_MISMATCH')
+  count+=b['checked_states'];i=end-1 if end<n else end
+ if i!=n or count!=record.get('baseline_checked_states'):raise RuntimeError('REUSE_COLLISION_INCOMPLETE')
+ saved=(result/'PRP/scene_snapshot.bin').read_bytes()
+ if not snapshot or saved!=Path(snapshot).read_bytes():raise RuntimeError('REUSE_SCENE_MISMATCH')
+ if not rospy.core.is_initialized():rospy.init_node('prp_reuse_check',anonymous=True,disable_signals=True)
+ rospy.wait_for_service('/get_planning_scene',timeout=5);req=GetPlanningSceneRequest();req.components.components=1023
+ if wire(rospy.ServiceProxy('/get_planning_scene',GetPlanningScene)(req).scene)!=saved:raise RuntimeError('REUSE_LIVE_SCENE_MISMATCH')
+ for param,file in (('/robot_description','config/gazebo_combined_robot.urdf'),('/robot_description_semantic','config/combined_robot.srdf')):
+  if rospy.get_param(param)!=(prp_global.runtime_v2.PACKAGE/file).read_text():raise RuntimeError('REUSE_LIVE_MODEL_MISMATCH')
+ target=json.loads((result/'IK/target.json').read_text());fk=json.loads((result/'IK/final_fk.json').read_text());numeric=json.loads((result/'PRP/P1/recommended/result.json').read_text())
+ if not np.allclose(target['position'],goal['position_m'],rtol=0,atol=1e-12) or min(np.max(abs(np.asarray(target['orientation_xyzw'])-goal['quaternion_xyzw'])),np.max(abs(np.asarray(target['orientation_xyzw'])+goal['quaternion_xyzw'])))>1e-12:raise RuntimeError('REUSE_TARGET_MISMATCH')
+ if not fk.get('ik_feasible') or numeric.get('status')!='PASS':raise RuntimeError('REUSE_NUMERIC_OR_FK_FAIL')
+ with np.load(result/'PRP/P1/recommended/trajectory.npz',allow_pickle=False) as z:data={k:z[k].copy() for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
+ if len(data['t'])!=n or numeric['samples']!=n or abs(data['t'][-1]-numeric['duration_s'])>1e-10 or np.max(abs(data['q'][0]-expected_start))>1e-10:raise RuntimeError('REUSE_TRAJECTORY_MISMATCH')
+ if np.any(np.diff(data['t'])<=0) or np.any(np.diff(data['u']) < -1e-12) or np.max(abs(np.max(abs(data['velocity']),axis=0)-numeric['velocity_peak']))>1e-10 or np.max(abs(np.max(abs(data['acceleration']),axis=0)-numeric['acceleration_peak']))>1e-10:raise RuntimeError('REUSE_NUMERIC_MISMATCH')
+ block=thaw(json.loads((result/'R/geometry.json').read_text()))
+ for j,c in enumerate(block.charts):
+  ix=np.flatnonzero(data['chart']==j)
+  if len(ix) and np.max(abs(c.evaluate_global(data['u'][ix]).q-data['q'][ix]))>1e-9:raise RuntimeError('REUSE_GEOMETRY_MISMATCH')
+ csv=result/'PRP/P1/recommended/trajectory.csv'
+ if not csv.is_file():raise RuntimeError('REUSE_EVENTS_MISSING')
+ data['storage_events']=np.loadtxt(csv,delimiter=',',skiprows=1,usecols=[0],ndmin=1)
+ return data,{'status':'PASS','checked_states':count,'source':str(Path(record_path).resolve()),'scope':'independent original-density discrete collision'},fk,numeric
+
 def retryable_failure(status,error,collision):
  """Only a confirmed collision failure can justify replanning for collision."""
  if status=='COLLISION_NOT_PASS' and collision.get('status')!='FAIL':return False
@@ -34,13 +70,13 @@ def run(config_path,c):
  for g in goals:
   if set(g)!={'id','type','frame','link','position_m','quaternion_xyzw'} or g['type']!='link_pose' or g['frame']!='world' or g['link']!='Link6':raise ValueError('UNSUPPORTED_MULTI_GOAL')
  reuse=task.get('reuse_segments',[])
- if not isinstance(reuse,list) or len(reuse)>4 or any(not isinstance(x,dict) or set(x)!={'directory','fk_record','target_record'} for x in reuse):raise ValueError('INVALID_REUSED_SEGMENTS')
+ if not isinstance(reuse,list) or len(reuse)>4 or any(not isinstance(x,dict) or set(x) not in ({'directory','fk_record','target_record'},{'directory','fk_record','target_record','collision_record'}) for x in reuse):raise ValueError('INVALID_REUSED_SEGMENTS')
  base=config_path.parent;root=prp_global._path(c['output']['root'],base);root.mkdir(parents=True,exist_ok=True);run=root/prp_global.experiment_name('multi',True,c['planner']['id']);run.mkdir();(run/'segments').mkdir()
  (run/'effective_config.yaml').write_text(yaml.safe_dump(c,allow_unicode=True,sort_keys=False));summary={'status':'PARTIAL','segments':[],'total_wall_s':None,'input_config':str(config_path),'goals':goals,'rho_policy':'22 then 36 fixed profile; bounded theta/rho recovery on exact infeasibility','dwell_s':1.0};t0=time.perf_counter();segments=[]
  def save():summary['total_wall_s']=time.perf_counter()-t0;(run/'result.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2))
  try:
   for i,g in enumerate(goals,1):
-   print('MULTI_SEGMENT_START',i,flush=True);st=time.perf_counter();descriptor=reuse[i-1] if i<=len(reuse) else None
+   print('MULTI_SEGMENT_START',i,flush=True);st=time.perf_counter();descriptor=reuse[i-1] if i<=len(reuse) else None;independent=None
    if descriptor:
     folder=prp_global._path(descriptor['directory'],base).resolve(strict=True);code=0
     # Reuse is allowed only for an explicitly selected, previously accepted
@@ -50,6 +86,9 @@ def run(config_path,c):
     if not np.allclose(actual[0],expected[0],rtol=0,atol=1e-12) or min(np.max(np.abs(np.array(actual[1])-expected[1])),np.max(np.abs(np.array(actual[1])+expected[1])))>1e-12:raise RuntimeError('REUSE_TARGET_MISMATCH')
     snapshot=os.environ.get('V2_PRP_SCENE_SNAPSHOT');previous=folder/'result/PRP/scene_snapshot.bin'
     if not snapshot or not previous.is_file() or previous.read_bytes()!=Path(snapshot).read_bytes():raise RuntimeError('REUSE_SCENE_MISMATCH')
+    if descriptor.get('collision_record'):
+     if prp_global._path(descriptor['fk_record'],base).resolve()!=(folder/'result/IK/final_fk.json').resolve() or prp_global._path(descriptor['target_record'],base).resolve()!=(folder/'result/IK/target.json').resolve():raise RuntimeError('REUSE_EXTERNAL_RECORD_MISMATCH')
+     independent=load_independent_collision(folder,prp_global._path(descriptor['collision_record'],base),np.asarray(start),g,snapshot)
     entry={'segment':i,'target':g,'directory':str(folder),'wall_s':time.perf_counter()-st,'exit_code':0,'reused':True}
    else:
     cc=copy.deepcopy(c);cc['task']={'mode':'single','source':'configured_goal','start_q':start,'goal':{k:v for k,v in g.items() if k!='id'}};cc['output']['root']=str(run/'segments');cc['output']['plot']=False
@@ -79,6 +118,8 @@ def run(config_path,c):
     entry={'segment':i,'target':g,'directory':str(folder),'wall_s':time.perf_counter()-st,'exit_code':code,'reused':False,'attempts':attempts}
    summary['segments'].append(entry)
    result=folder/'result/result.json';entry['result']=json.loads(result.read_text()) if result.is_file() else None
+   if independent:
+    entry['original_status']=entry['result'].get('status');entry['result']=dict(entry['result'],status='FIXED_SIGNED_R_SINGLE_PASS',independent_collision=independent[1])
    pfile=folder/'result/P/parent_path.json'
    if pfile.is_file():
     parent=json.loads(pfile.read_text());entry['P']={'states':len(parent['path']['q']),'planning':parent['planning'],'start_q':parent['path']['q'][0],'end_q':parent['path']['q'][-1]}
@@ -86,9 +127,11 @@ def run(config_path,c):
     entry['status']='FAIL';summary['failure_segment']=i;summary['failure_stage_or_reason']=(entry['result'] or {}).get('error','single-stage failure; see error.log');save();break
    trajectory=folder/'result/PRP/P1/recommended/trajectory.npz';numeric=folder/'result/PRP/P1/recommended/result.json';fk=prp_global._path(descriptor['fk_record'],base) if descriptor else folder/'result/IK/final_fk.json';collision=folder/'result/PRP/collision.json'
    if not all(x.is_file() for x in (trajectory,numeric,fk,collision)):raise RuntimeError('MISSING_SEGMENT_FINAL_EVIDENCE')
-   fkr=json.loads(fk.read_text());fkr=fkr.get('P1_final_fk',fkr);cr=json.loads(collision.read_text());nr=json.loads(numeric.read_text())
+   fkr=json.loads(fk.read_text());fkr=fkr.get('P1_final_fk',fkr);cr=independent[1] if independent else json.loads(collision.read_text());nr=json.loads(numeric.read_text())
    if not fkr.get('ik_feasible') or cr.get('status')!='PASS' or nr.get('status')!='PASS':raise RuntimeError('SEGMENT_FINAL_EVIDENCE_FAIL')
-   with np.load(trajectory,allow_pickle=False) as z: data={k:z[k] for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
+   if independent:data=independent[0]
+   else:
+    with np.load(trajectory,allow_pickle=False) as z: data={k:z[k] for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
    # The segment display already contains all exporter time-law and chart
    # events. If it is absent, preserve every source row rather than inventing
    # event metadata for an older reusable segment.

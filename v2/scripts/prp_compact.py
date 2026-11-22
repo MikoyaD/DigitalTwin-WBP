@@ -36,7 +36,7 @@ def finalize(root,work,stage,source_r=None):
  else:_copy(rdir/'candidate.npz',out/'R/candidate.npz');_copy(rdir/'verification.json',out/'R/verification.json')
  for f in ('result.json','error.log'):_copy(result/f,out/f)
  for f in ('result.json','error.log','collision.json','scene_snapshot.bin'):_copy(pr/f,out/'PRP'/f)
- for f in ('result.json','numerical_result.json'):_copy(pr/'P0/G'/f,out/'PRP/P0/G'/f)
+ for f in ('result.json','numerical_result.json','trajectory.csv'):_copy(pr/'P0/G'/f,out/'PRP/P0/G'/f)
  _copy(pr/'P0/cases/seg01/C/verification.json',out/'PRP/P0/cases/seg01/C/verification.json')
  if record:
   p=out/'PRP/P0/geometry.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(record,indent=2))
