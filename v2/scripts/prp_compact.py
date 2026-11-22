@@ -36,7 +36,7 @@ def finalize(root,work,stage,source_r=None,retain_dense=False):
   _copy(rdir/'parent_path.json',out/'R/parent_path.json');_copy(rdir/'verification.json',out/'R/verification.json')
  else:_copy(rdir/'verification.json',out/'R/verification.json')
  for f in ('result.json','error.log'):_copy(result/f,out/f)
- for f in ('result.json','error.log','collision.json','scene_snapshot.bin'):_copy(pr/f,out/'PRP'/f)
+ for f in ('result.json','error.log','collision.json','geometry_collision.json','scene_snapshot.bin'):_copy(pr/f,out/'PRP'/f)
  for f in ('result.json','numerical_result.json','trajectory.csv'):_copy(pr/'P0/G'/f,out/'PRP/P0/G'/f)
  _copy(pr/'P0/cases/seg01/C/verification.json',out/'PRP/P0/cases/seg01/C/verification.json')
  for f in ('A/fast_solver.json','A/smooth_solver.json','C/solver.json'):

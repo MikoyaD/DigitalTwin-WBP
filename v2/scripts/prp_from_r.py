@@ -92,6 +92,43 @@ def main(argv=None):
   if geo.get('algorithm_variant')!='V2-SIGNED-H-v1':raise ValueError('SIGNED_R_REQUIRED')
   parent_map=(runtime_v2.PACKAGE/parent['config']['static_octomap']).resolve(strict=True)
   if a.scene_map and Path(a.scene_map).resolve(strict=True)!=parent_map:raise ValueError('SAVED_PARENT_SCENE_MAP_MISMATCH')
+  if a.until=='g1':
+   # Only start a runtime if the configured master is actually absent, never if
+   # access is denied or an existing master is partial/incompatible.
+   uri=os.environ.get('ROS_MASTER_URI',runtime_v2.URI);ensure_master(uri,parent['config'])
+   runtime=runtime_v2.status() if uri.rstrip('/')==runtime_v2.URI.rstrip('/') else {'status':'EXTERNAL'}
+   expected_map=(runtime_v2.PACKAGE/parent['config']['static_octomap']).resolve(strict=True)
+   if runtime.get('status')=='READY' and Path(runtime['map']).resolve()!=expected_map:raise RuntimeError('WAREHOUSE_RUNTIME_MAP_MISMATCH '+repr(runtime))
+   import rospy
+   from moveit_msgs.srv import GetPlanningScene,GetPlanningSceneRequest
+   if not rospy.core.is_initialized():rospy.init_node('v2_prp_from_r',anonymous=True,disable_signals=True)
+   rospy.wait_for_service('/get_planning_scene',timeout=5.);rospy.wait_for_service('/check_state_validity',timeout=5.);rospy.wait_for_service('/plan_kinematic_path',timeout=5.)
+   get=rospy.ServiceProxy('/get_planning_scene',GetPlanningScene);req=GetPlanningSceneRequest();req.components.components=1023;scene=get(req).scene
+   if scene.is_diff or not scene.world.octomap.octomap.id or not scene.world.octomap.octomap.data:raise RuntimeError('WAREHOUSE_OCTOMAP_MISSING')
+   urdf=rospy.get_param('/robot_description');srdf=rospy.get_param('/robot_description_semantic')
+   if urdf!=(runtime_v2.PACKAGE/'config/gazebo_combined_robot.urdf').read_text() or srdf!=(runtime_v2.PACKAGE/'config/combined_robot.srdf').read_text():raise RuntimeError('ROBOT_MODEL_MISMATCH')
+   expected=wire(scene)
+   if a.scene_snapshot:
+    if Path(a.scene_snapshot).resolve(strict=True).read_bytes()!=expected:raise RuntimeError('EXPLICIT_SCENE_SNAPSHOT_MISMATCH')
+   elif runtime.get('status')!='READY':
+    # External servers lack V2's map provenance: use the saved R's full scene
+    # identity, not an assumed map based on a nonempty OctoMap.
+    if sha256(expected).hexdigest()!=parent['scene']['scene_sha256']:raise RuntimeError('EXTERNAL_SCENE_IDENTITY_MISMATCH; supply matching scene snapshot')
+   (out/'scene_snapshot.bin').write_bytes(expected)
+   result['scene']={'mode':'explicit' if a.scene_snapshot else 'current','runtime':runtime,'master_uri':uri,'map':str(expected_map),'octomap_id':scene.world.octomap.octomap.id,'octomap_bytes':len(scene.world.octomap.octomap.data),'snapshot':str(out/'scene_snapshot.bin'),'model_matches_package':True}
+   save()
+   block=thaw(geo)
+   from ..geometry.tm_frozen import verify_geometry
+   verify_geometry(block,path,geo['construction'])
+   phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)]
+   print('R_GEOMETRY_COLLISION_START',flush=True);gs=time.perf_counter();gr=PlanningSceneChecker().check(phases,include_geometry=True)
+   same=bool(gr.get('scene_snapshot_hex')) and bytes.fromhex(gr['scene_snapshot_hex'])==expected
+   model=gr.get('robot_description')==urdf and gr.get('robot_description_semantic')==srdf
+   geom={'status':gr['status'] if same and model else 'UNKNOWN','reason':gr['reason'],'checked_states':gr['checked_states'],'failures':gr['failures'],'wall_s':time.perf_counter()-gs,'scene_equal':same,'model_equal':model}
+   result['geometry_collision']=geom;print('R_GEOMETRY_COLLISION',json.dumps(geom),flush=True)
+   (out/'geometry_collision.json').write_text(json.dumps(geom,indent=2));save()
+   if geom['status']!='PASS':
+    result['collision']=geom;result['status']='COLLISION_NOT_PASS';(out/'collision.json').write_text(json.dumps(geom,indent=2));raise RuntimeError('R_GEOMETRY_COLLISION_NOT_PASS '+repr(geom))
   save();print('P0_START',flush=True)
   st=time.perf_counter();p0,p0r=g0_signed_ac.run(source,out/'P0',defer_collision=True,compact_output=a.compact_output);result['p0_wall_s']=time.perf_counter()-st;result['p0']=p0r
   if p0r['status']!='NUMERICAL_PASS_COLLISION_PENDING' or p0r.get('time_law_type')!='NESTED_C_V1':raise RuntimeError('P0_NOT_PASS')
@@ -111,36 +148,12 @@ def main(argv=None):
   if len(vt)!=result['csv']['display_rows'] or len(pdata['time_s'])!=len(vt):raise RuntimeError('CSV_READER_MISMATCH')
   result['status']='P1_NUMERICAL_PASS_COLLISION_PENDING'
   save()
-  # Only start a runtime if the configured master is actually absent, never if
-  # access is denied or an existing master is partial/incompatible.
-  uri=os.environ.get('ROS_MASTER_URI',runtime_v2.URI);ensure_master(uri,parent['config'])
-  runtime=runtime_v2.status() if uri.rstrip('/')==runtime_v2.URI.rstrip('/') else {'status':'EXTERNAL'}
-  expected_map=(runtime_v2.PACKAGE/parent['config']['static_octomap']).resolve(strict=True)
-  if runtime.get('status')=='READY' and Path(runtime['map']).resolve()!=expected_map:raise RuntimeError('WAREHOUSE_RUNTIME_MAP_MISMATCH '+repr(runtime))
-  import rospy
-  from moveit_msgs.srv import GetPlanningScene,GetPlanningSceneRequest
-  if not rospy.core.is_initialized():rospy.init_node('v2_prp_from_r',anonymous=True,disable_signals=True)
-  rospy.wait_for_service('/get_planning_scene',timeout=5.);rospy.wait_for_service('/check_state_validity',timeout=5.);rospy.wait_for_service('/plan_kinematic_path',timeout=5.)
-  get=rospy.ServiceProxy('/get_planning_scene',GetPlanningScene);req=GetPlanningSceneRequest();req.components.components=1023;scene=get(req).scene
-  if scene.is_diff or not scene.world.octomap.octomap.id or not scene.world.octomap.octomap.data:raise RuntimeError('WAREHOUSE_OCTOMAP_MISSING')
-  urdf=rospy.get_param('/robot_description');srdf=rospy.get_param('/robot_description_semantic')
-  if urdf!=(runtime_v2.PACKAGE/'config/gazebo_combined_robot.urdf').read_text() or srdf!=(runtime_v2.PACKAGE/'config/combined_robot.srdf').read_text():raise RuntimeError('ROBOT_MODEL_MISMATCH')
-  expected=wire(scene)
-  if a.scene_snapshot:
-   if Path(a.scene_snapshot).resolve(strict=True).read_bytes()!=expected:raise RuntimeError('EXPLICIT_SCENE_SNAPSHOT_MISMATCH')
-  elif runtime.get('status')!='READY':
-   # External servers lack V2's map provenance: use the saved R's full scene
-   # identity, not an assumed map based on a nonempty OctoMap.
-   if sha256(expected).hexdigest()!=parent['scene']['scene_sha256']:raise RuntimeError('EXTERNAL_SCENE_IDENTITY_MISMATCH; supply matching scene snapshot')
-  (out/'scene_snapshot.bin').write_bytes(expected)
-  result['scene']={'mode':'explicit' if a.scene_snapshot else 'current','runtime':runtime,'master_uri':uri,'map':str(expected_map),'octomap_id':scene.world.octomap.octomap.id,'octomap_bytes':len(scene.world.octomap.octomap.data),'snapshot':str(out/'scene_snapshot.bin'),'model_matches_package':True}
-  save()
-  print('COLLISION_START',len(z['q']),flush=True);st=time.perf_counter();block=thaw(geo);phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)];chunks=[];count=0;i=0;q=z['q'];chunk_size=8000;resource_retry=False
+  print('COLLISION_START',len(z['q']),flush=True);st=time.perf_counter();chunks=[];count=geom['checked_states'];i=0;q=z['q'];chunk_size=8000;resource_retry=False
   while i<len(q):
-   end=min(i+chunk_size,len(q));chunk_start=time.perf_counter();r=PlanningSceneChecker().check(phases,dict(q=q[i:end]),include_geometry=(i==0));count+=r['checked_states']
+   end=min(i+chunk_size,len(q));chunk_start=time.perf_counter();r=PlanningSceneChecker().check(phases,dict(q=q[i:end]),include_geometry=False);count+=r['checked_states']
    same=r.get('scene_snapshot_hex') and bytes.fromhex(r['scene_snapshot_hex'])==expected
    model=r.get('robot_description')==urdf and r.get('robot_description_semantic')==srdf
-   chunk={'start':i,'end':end,'include_geometry':i==0,'status':r['status'],'reason':r['reason'],'checked_states':r['checked_states'],'wall_s':time.perf_counter()-chunk_start,'failures':r['failures'],'scene_equal':bool(same),'model_equal':bool(model)};chunks.append(chunk)
+   chunk={'start':i,'end':end,'include_geometry':False,'status':r['status'],'reason':r['reason'],'checked_states':r['checked_states'],'wall_s':time.perf_counter()-chunk_start,'failures':r['failures'],'scene_equal':bool(same),'model_equal':bool(model)};chunks.append(chunk)
    print('COLLISION_CHUNK',i,end,r['status'],r['checked_states'],flush=True)
    if r['status']=='UNKNOWN' and 'COLLISION_TIME_BUDGET' in r['reason'] and same and model and not resource_retry:
     # Retry the same candidate, not the whole planning chain, at most once.
@@ -151,7 +164,7 @@ def main(argv=None):
     (out/'collision.json').write_text(json.dumps(result['collision'],indent=2));raise RuntimeError('COLLISION_NOT_PASS '+repr(chunk))
    if end==len(q):break
    i=end-1
-  result['collision']={'status':'PASS','checked_states':count,'chunks':chunks,'wall_s':time.perf_counter()-st,'coverage':'adaptive signed geometry, every exported state and every adjacent arithmetic midpoint, discrete only'}
+  result['collision']={'status':'PASS','checked_states':count,'chunks':chunks,'wall_s':time.perf_counter()-st,'geometry_precheck':geom,'coverage':'same frozen adaptive signed geometry prechecked, every exported state and every adjacent arithmetic midpoint, discrete only'}
   (out/'collision.json').write_text(json.dumps(result['collision'],indent=2));result['status']='FIXED_SIGNED_R_SINGLE_PASS'
   if not a.compact_output:finalize_direct(p0,p1);result['p0']=json.loads((p0/'G/result.json').read_text())
   save();print('PRP_RESULT',result['status'],flush=True);return 0

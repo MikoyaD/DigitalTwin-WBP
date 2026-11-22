@@ -210,7 +210,7 @@ def load_preview_csv(csv, summary_only=False):
     if stage.name=='recommended' and stage.parent.name=='P1':
         prp_result=stage.parent.parent/'result.json'
         info=read(prp_result).get('csv',{}) if prp_result.is_file() else {}
-        if isinstance(info,dict) and info.get('method')=='original_dense_rows':
+        if isinstance(info,dict) and str(info.get('method','')).startswith('original_dense_rows'):
             result=dict(result,display_sampling=True)
     name=root.name+'/'+str(csv.relative_to(root).parent)
     meta=dict(name=name,task_id=parent['task_id'],algorithm=stage.name,original_run_id=root.name,

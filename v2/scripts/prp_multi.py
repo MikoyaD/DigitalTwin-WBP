@@ -13,7 +13,9 @@ def load_independent_collision(folder, record_path, expected_start, goal, snapsh
  import rospy
  from moveit_msgs.srv import GetPlanningScene,GetPlanningSceneRequest
  folder=Path(folder).resolve(strict=True);result=folder/'result';record=json.loads(Path(record_path).read_text())
- if Path(record['candidate']).resolve(strict=True)!=result.resolve(strict=True) or record.get('baseline')!='PASS':raise RuntimeError('REUSE_COLLISION_RECORD_MISMATCH')
+ migration=folder/'migration.json'
+ recorded_source=Path(json.loads(migration.read_text())['source_candidate']).resolve() if migration.is_file() else result.resolve(strict=True)
+ if Path(record['candidate']).resolve()!=recorded_source or record.get('baseline')!='PASS':raise RuntimeError('REUSE_COLLISION_RECORD_MISMATCH')
  batches=record.get('batches',[]);n=record.get('trajectory_states');geo_count=record.get('geometry_states');i=0;count=0
  for b in batches:
   end=b.get('last_exclusive');expected=geo_count if i==0 else 0
@@ -30,7 +32,8 @@ def load_independent_collision(folder, record_path, expected_start, goal, snapsh
  target=json.loads((result/'IK/target.json').read_text());fk=json.loads((result/'IK/final_fk.json').read_text());numeric=json.loads((result/'PRP/P1/recommended/result.json').read_text())
  if not np.allclose(target['position'],goal['position_m'],rtol=0,atol=1e-12) or min(np.max(abs(np.asarray(target['orientation_xyzw'])-goal['quaternion_xyzw'])),np.max(abs(np.asarray(target['orientation_xyzw'])+goal['quaternion_xyzw'])))>1e-12:raise RuntimeError('REUSE_TARGET_MISMATCH')
  if not fk.get('ik_feasible') or numeric.get('status')!='PASS':raise RuntimeError('REUSE_NUMERIC_OR_FK_FAIL')
- with np.load(result/'PRP/P1/recommended/trajectory.npz',allow_pickle=False) as z:data={k:z[k].copy() for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
+ dense=folder/'.dense/recommended.arrays';trajectory=dense if dense.is_dir() else result/'PRP/P1/recommended/trajectory.npz'
+ with store.load(trajectory,allow_pickle=False) as z:data={k:z[k].copy() for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
  if len(data['t'])!=n or numeric['samples']!=n or abs(data['t'][-1]-numeric['duration_s'])>1e-10 or np.max(abs(data['q'][0]-expected_start))>1e-10:raise RuntimeError('REUSE_TRAJECTORY_MISMATCH')
  if np.any(np.diff(data['t'])<=0) or np.any(np.diff(data['u']) < -1e-12) or np.max(abs(np.max(abs(data['velocity']),axis=0)-numeric['velocity_peak']))>1e-10 or np.max(abs(np.max(abs(data['acceleration']),axis=0)-numeric['acceleration_peak']))>1e-10:raise RuntimeError('REUSE_NUMERIC_MISMATCH')
  block=thaw(json.loads((result/'R/geometry.json').read_text()))
@@ -197,7 +200,7 @@ def run(config_path,c):
    if not source.is_file():raise RuntimeError('TASK_PARENT_METADATA_MISSING')
    summary['task']['csv']={'path':str(taskdir/'trajectory.csv'),'bytes':(taskdir/'trajectory.csv').stat().st_size,'rows':csv_rows,'source_rows':len(t),'sampling':'original rows, 50 Hz target, event/extrema and position-error refinement; dense acceptance retained'}
    summary['status']='SIGNED_FIVE_GOAL_TASK_PASS';save()
-   (taskdir/'result.json').write_text(json.dumps({'status':'TASK_PASS','source_parent':os.path.relpath(source,taskdir),'collision':{'status':'PASS','checked_states':summary['task']['collision_states']},'scope':summary['task']['scope']},ensure_ascii=False,indent=2))
+   (taskdir/'result.json').write_text(json.dumps({'status':'TASK_PASS','display_sampling':True,'source_parent':os.path.relpath(source,taskdir),'collision':{'status':'PASS','checked_states':summary['task']['collision_states']},'scope':summary['task']['scope']},ensure_ascii=False,indent=2))
  except Exception as ex:
   summary['failure_stage_or_reason']=repr(ex);(run/'error.log').write_text(traceback.format_exc());print(traceback.format_exc(),flush=True)
  save();logical,allocated=prp_compact._measure(run);summary['storage']={'logical_bytes':logical,'allocated_bytes':allocated,'budget_bytes':prp_compact.BUDGET,'status':'PASS' if max(logical,allocated)<=prp_compact.BUDGET else 'OUTPUT_BUDGET_EXCEEDED'};save();logical,allocated=prp_compact._measure(run);summary['storage'].update(logical_bytes=logical,allocated_bytes=allocated,status='PASS' if max(logical,allocated)<=prp_compact.BUDGET else 'OUTPUT_BUDGET_EXCEEDED');save();print('PRP_MULTI_RESULT',run,summary['status'],json.dumps(summary['storage']),flush=True)
