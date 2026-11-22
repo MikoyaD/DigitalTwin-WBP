@@ -25,3 +25,7 @@ Git 提交、分支、标签标识源码快照；`v2-prp-*` 是项目阶段标�
 ## 2026-11-22：真实新五目标 CSV 试运行
 
 运行源码基线 `bc0f65399d1ee2f73faba615cdcbcc5e86edbd25`；这是源码提交，不是任务输出名称。真实目录 `V2-20261122-185203-MULTI-IKPRP-RRTstar` 的第 1 目标六条新 P 经 R/P0/P1 数值与末端 FK，但碰撞第一批均达到 60 s 时限并返回 UNKNOWN；其余目标、任务 CSV、绘图未产生。正式 PARTIAL / 退出 1，目录 127.285 MiB 超预算。此前 193.672418 s 的 2026-11-19 数值和离散碰撞完整结果仍为历史基线。证据位于仓库外 `research_management/evidence/V2_PRP_FIVE_CSV_ENDTOEND_20261122/`。
+
+## 2026-11-22 固定候选碰撞与存储迁移（部分完成）
+
+固定 attempt_03 实际 103632 状态离散碰撞 PASS；R 几何 4463 状态仅作非等价研究对照。正式分批与 UNKNOWN 处理改进，50 Hz 目标的 P1/整体 CSV 源行选择接入。零新 NPZ、P0 存储和历史高密 CSV 处理尚未完成；已有 NPZ 保留。证据 `research_management/evidence/V2_PRP_STORAGE_COLLISION_OPT_20261122/REPORT.md`。

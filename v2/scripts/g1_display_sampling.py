@@ -39,6 +39,33 @@ def select_rows(a, events, max_gap=.01):
     return ix
 
 
+def select_storage_rows(a, events=(), max_gap=.02, position_tolerance=.001,
+                        angle_tolerance=.001):
+    """Select original 41-column rows, refining linear-position errors.
+
+    The caller must supply the exact chart, time-law and task events. This is
+    a storage/display selection, never a replacement for dense acceptance.
+    """
+    a=np.asarray(a);t=a[:,0];ix=select_rows(a,events,max_gap=max_gap)
+    q=a[:,1:10].copy();q[:,2]=np.unwrap(q[:,2])
+    while True:
+        interp=np.column_stack([np.interp(t,t[ix],q[ix,k]) for k in range(9)])
+        delta=np.abs(q-interp)
+        score=np.maximum(np.linalg.norm(delta[:,:2],axis=1)/position_tolerance,
+                         np.max(delta[:,2:],axis=1)/angle_tolerance)
+        bad=np.flatnonzero(score>1.)
+        if not len(bad):break
+        # One worst original row per failing interval; never synthesize a row.
+        interval=np.searchsorted(ix,bad,side='right')-1
+        extra=[]
+        for group in np.unique(interval):
+            ids=bad[interval==group];extra.append(int(ids[np.argmax(score[ids])]))
+        new=np.union1d(ix,extra)
+        if len(new)==len(ix):raise ValueError('STORAGE_INTERPOLATION_REFINEMENT_FAILED')
+        ix=new
+    return ix
+
+
 def prepare(folder, geometry):
     folder=Path(folder);geometry=Path(geometry)
     geo=json.loads((geometry/'geometry.json').read_text());law=json.loads((folder/'time_law.json').read_text())

@@ -5,12 +5,26 @@ import numpy as np
 import yaml
 from . import prp_global,prp_compact
 
+def retryable_failure(status,error,collision):
+ """Only a confirmed collision failure can justify replanning for collision."""
+ if status=='COLLISION_NOT_PASS' and collision.get('status')!='FAIL':return False
+ return status in ('R_FAIL','COLLISION_NOT_PASS','DOWNSTREAM_FAIL','FINAL_TARGET_FK_FAIL') or any(x in error for x in ('IK_POSTERIOR_NOT_FEASIBLE','P_ENDPOINT_TASK_FK_NOT_PASS','PLANNING_FAILED','MOVEIT_CAPTURE_FAILED'))
+
 def write_task_csv(data,dest):
  from .stage_v2 import HEADER
+ from .g1_display_sampling import select_storage_rows
  t=data['t'];q=data['q'];v=data['velocity'];a=data['acceleration'];j=data['jerk']
  if len(t)<2 or np.any(np.diff(t)<=0):raise ValueError('TASK_CSV_TIME_NOT_INCREASING')
  matrix=np.column_stack((t,q,v,a,j,data['segment'],data['chart'],data['direction']))
- np.savetxt(dest,matrix,delimiter=',',fmt='%.17g',header=','.join(HEADER+['segment','chart_index','direction']),comments='')
+ # Preserve both sides of segment, chart and direction changes, including
+ # arrival and departure at each hold. Rows remain the original dense samples.
+ changes=np.flatnonzero(np.any(matrix[1:,37:40]!=matrix[:-1,37:40],axis=1))+1
+ event_ix=np.unique(np.r_[0,len(t)-1,changes,np.maximum(changes-1,0)])
+ events=np.unique(np.r_[t[event_ix],data.get('storage_events',[])])
+ selector=np.column_stack((matrix[:,:37],np.zeros(len(t)),matrix[:,38],matrix[:,37],matrix[:,39]))
+ ix=select_storage_rows(selector,events)
+ np.savetxt(dest,matrix[ix],delimiter=',',fmt='%.17g',header=','.join(HEADER+['segment','chart_index','direction']),comments='')
+ return len(ix)
 
 
 def run(config_path,c):
@@ -55,7 +69,12 @@ def run(config_path,c):
      if code==0 and status=='FIXED_SIGNED_R_SINGLE_PASS':break
      # Retry only a new genuinely randomized P for candidate-dependent failures;
      # scene, runtime and interface errors must stop instead of being masked.
-     retry=status in ('R_FAIL','COLLISION_NOT_PASS','DOWNSTREAM_FAIL','FINAL_TARGET_FK_FAIL') or any(x in error for x in ('IK_POSTERIOR_NOT_FEASIBLE','P_ENDPOINT_TASK_FK_NOT_PASS','PLANNING_FAILED','MOVEIT_CAPTURE_FAILED'))
+     collision_file=folder/'result/PRP/collision.json'
+     collision=json.loads(collision_file.read_text()) if collision_file.is_file() else {}
+     # An UNKNOWN check is a resource/scene/service failure, not evidence that
+     # another random parent path will help. Keep this candidate and stop.
+     if status=='COLLISION_NOT_PASS':attempts[-1]['collision_status']=collision.get('status','UNKNOWN')
+     retry=retryable_failure(status,error,collision)
      if not retry:break
     entry={'segment':i,'target':g,'directory':str(folder),'wall_s':time.perf_counter()-st,'exit_code':code,'reused':False,'attempts':attempts}
    summary['segments'].append(entry)
@@ -70,6 +89,11 @@ def run(config_path,c):
    fkr=json.loads(fk.read_text());fkr=fkr.get('P1_final_fk',fkr);cr=json.loads(collision.read_text());nr=json.loads(numeric.read_text())
    if not fkr.get('ik_feasible') or cr.get('status')!='PASS' or nr.get('status')!='PASS':raise RuntimeError('SEGMENT_FINAL_EVIDENCE_FAIL')
    with np.load(trajectory,allow_pickle=False) as z: data={k:z[k] for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
+   # The segment display already contains all exporter time-law and chart
+   # events. If it is absent, preserve every source row rather than inventing
+   # event metadata for an older reusable segment.
+   csv=folder/'result/PRP/P1/recommended/trajectory.csv'
+   data['storage_events']=np.loadtxt(csv,delimiter=',',skiprows=1,usecols=[0],ndmin=1) if csv.is_file() else data['t']
    if not segments:
     initial=data['q'][0]-np.asarray(task['start_q']);initial[2]=math.remainder(float(initial[2]),2*math.pi)
     if np.max(np.abs(initial))>1e-10:raise RuntimeError('REUSE_TASK_START_MISMATCH')
@@ -82,9 +106,9 @@ def run(config_path,c):
     if max(np.max(abs(data['velocity'][endpoint])),np.max(abs(data['acceleration'][endpoint])))>1e-8:raise RuntimeError('GOAL_STOP_NOT_PASS')
    entry.update(status='PASS',final_fk=fkr,collision=cr,numeric=nr);segments.append(data);start=data['q'][-1].tolist();save()
   if len(segments)==5:
-   rows=[];offset=0.;events=[];lasttheta=None
+   rows=[];offset=0.;events=[];storage_events=[];lasttheta=None
    for i,z in enumerate(segments):
-    q=z['q'].copy();shift=0. if lasttheta is None else round((lasttheta-q[0,2])/(2*math.pi))*2*math.pi;q[:,2]+=shift
+    q=z['q'].copy();shift=0. if lasttheta is None else round((lasttheta-q[0,2])/(2*math.pi))*2*math.pi;q[:,2]+=shift;storage_events.extend((z['storage_events']+offset).tolist())
     # The previous 1 s hold already contains this equal zero-velocity start.
     sl=slice(None) if i==0 else slice(1,None);n=len(z['t'][sl]);end=offset+float(z['t'][-1]);part={'t':z['t'][sl]+offset,'q':q[sl],'velocity':z['velocity'][sl],'acceleration':z['acceleration'][sl],'jerk':z['jerk'][sl],'segment':np.full(n,i+1,dtype=np.int16),'chart':z['chart'][sl],'direction':z['direction'][sl]};rows.append(part)
     rows.append({'t':np.array([end+1.]),'q':q[-1:],'velocity':np.zeros((1,9)),'acceleration':np.zeros((1,9)),'jerk':np.zeros((1,9)),'segment':np.array([i+1],dtype=np.int16),'chart':z['chart'][-1:],'direction':np.array([0],dtype=np.int8)});events.append({'segment':i+1,'motion_start_s':offset,'motion_end_s':end,'dwell_end_s':end+1.});offset=end+1.;lasttheta=float(q[-1,2])
@@ -92,7 +116,7 @@ def run(config_path,c):
    if np.any(np.diff(t)<=0) or np.max(abs(v))>.5+tol or np.max(abs(a))>1.+tol or np.max(abs(lat))>1e-6 or np.any(lon[direction>0]<-tol) or np.any(lon[direction<0]>tol) or np.any(abs(lon[direction==0])>tol):raise RuntimeError('TASK_NUMERIC_NOT_PASS')
    np.savez_compressed(run/'task_trajectory.npz',**allz)
    taskdir=run/'task';taskdir.mkdir()
-   write_task_csv(allz,taskdir/'trajectory.csv')
+   csv_rows=write_task_csv(dict(allz,storage_events=storage_events),taskdir/'trajectory.csv')
    summary['task']={'numerical':'PASS','collision':'PASS_BY_SAME_SCENE_SEGMENTS_AND_REPEATED_HOLDS','collision_states':sum(x['collision']['checked_states'] for x in summary['segments']),'duration_s':float(t[-1]),'motion_s':float(t[-1]-5),'dwell_s':5.,'samples':len(t),'events':events,'velocity_peak':np.max(abs(v),axis=0).tolist(),'acceleration_peak':np.max(abs(a),axis=0).tolist(),'jerk_peak':np.max(abs(j),axis=0).tolist(),'jerk_timeweighted_mean':(sum(np.trapz(np.abs(z['jerk']),z['t'],axis=0) for z in segments)/t[-1]).tolist(),'lateral_max':float(np.max(abs(lat))),'scope':'discrete segment collision; holds reuse identical checked endpoint states'}
    # Each accepted segment used the same explicitly matched PlanningScene.
    # Keep one real snapshot, not five copies of the same OctoMap.
@@ -122,7 +146,7 @@ def run(config_path,c):
      if f.is_file():f.unlink()
    source=Path(summary['segments'][0]['directory'])/'result/P/parent_path.json'
    if not source.is_file():raise RuntimeError('TASK_PARENT_METADATA_MISSING')
-   summary['task']['csv']={'path':str(taskdir/'trajectory.csv'),'bytes':(taskdir/'trajectory.csv').stat().st_size,'rows':len(t),'sampling':'all stitched states including holds'}
+   summary['task']['csv']={'path':str(taskdir/'trajectory.csv'),'bytes':(taskdir/'trajectory.csv').stat().st_size,'rows':csv_rows,'source_rows':len(t),'sampling':'original rows, 50 Hz target, event/extrema and position-error refinement; dense acceptance retained'}
    summary['status']='SIGNED_FIVE_GOAL_TASK_PASS';save()
    (taskdir/'result.json').write_text(json.dumps({'status':'TASK_PASS','source_parent':os.path.relpath(source,taskdir),'collision':{'status':'PASS','checked_states':summary['task']['collision_states']},'scope':summary['task']['scope']},ensure_ascii=False,indent=2))
  except Exception as ex:

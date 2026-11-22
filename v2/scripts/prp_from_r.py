@@ -31,7 +31,7 @@ def display_csv(dest, source, p0, output_path=None):
  from ..timing.unified_g import _inverse_quintic
  from ..timing.g0_ac_geometry import chart_events
  from .g1_p01_finalize import law
- from .g1_display_sampling import select_rows
+ from .g1_display_sampling import select_storage_rows
  geo=json.loads((source/'geometry.json').read_text());block=thaw(geo);base_file=p0/'G/trajectory.npz'
  if not base_file.is_file():base_file=p0/'G/time_law.npz'
  base=NestedBase(base_file)
@@ -47,10 +47,10 @@ def display_csv(dest, source, p0, output_path=None):
  with np.load(dest/'trajectory.npz',allow_pickle=False) as z:
   mode=np.where(z['direction']==0,0,1)
   a=np.column_stack([z[t] for t in ('t','q','velocity','acceleration','jerk','u','chart','direction')]);a=np.column_stack((a[:,:-1],mode,a[:,-1]))
-  ix=select_rows(a,events);csv=Path(output_path) if output_path else dest/'trajectory.csv'
+  ix=select_storage_rows(a,events);csv=Path(output_path) if output_path else dest/'trajectory.csv'
   if csv.exists():raise FileExistsError('CSV_OUTPUT_EXISTS: '+str(csv))
   np.savetxt(csv,a[ix],delimiter=',',fmt='%.17g',header=','.join(HEADER+['u','chart_index','mode_index','direction']),comments='')
-  gaps=np.diff(a[:,0]);return {'path':str(csv),'dense_rows':len(a),'display_rows':len(ix),'bytes':csv.stat().st_size,'events':len(events),'max_gap_s':float(np.max(np.diff(a[ix,0]))),'source_gaps_over_0_01_s':int(np.count_nonzero(gaps>.01)),'source_max_gap_s':float(max(gaps)),'method':'original_dense_rows','scope':'display only; dense NPZ retained for acceptance'}
+  gaps=np.diff(a[:,0]);return {'path':str(csv),'dense_rows':len(a),'display_rows':len(ix),'bytes':csv.stat().st_size,'events':len(events),'max_gap_s':float(np.max(np.diff(a[ix,0]))),'source_gaps_over_0_02_s':int(np.count_nonzero(gaps>.02)),'source_max_gap_s':float(max(gaps)),'method':'original_dense_rows_50hz_event_extrema_position_refined','scope':'display only; dense source used for acceptance'}
 
 
 def main(argv=None):
@@ -112,13 +112,16 @@ def main(argv=None):
   (out/'scene_snapshot.bin').write_bytes(expected)
   result['scene']={'mode':'explicit' if a.scene_snapshot else 'current','runtime':runtime,'master_uri':uri,'map':str(expected_map),'octomap_id':scene.world.octomap.octomap.id,'octomap_bytes':len(scene.world.octomap.octomap.data),'snapshot':str(out/'scene_snapshot.bin'),'model_matches_package':True}
   save()
-  print('COLLISION_START',len(z['q']),flush=True);st=time.perf_counter();block=thaw(geo);phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)];chunks=[];count=0;i=0;q=z['q']
+  print('COLLISION_START',len(z['q']),flush=True);st=time.perf_counter();block=thaw(geo);phases=[ChartView(c,block.schema,i) for i,c in enumerate(block.charts)];chunks=[];count=0;i=0;q=z['q'];chunk_size=8000;resource_retry=False
   while i<len(q):
-   end=min(i+20000,len(q));r=PlanningSceneChecker().check(phases,dict(q=q[i:end]),include_geometry=(i==0));count+=r['checked_states']
+   end=min(i+chunk_size,len(q));chunk_start=time.perf_counter();r=PlanningSceneChecker().check(phases,dict(q=q[i:end]),include_geometry=(i==0));count+=r['checked_states']
    same=r.get('scene_snapshot_hex') and bytes.fromhex(r['scene_snapshot_hex'])==expected
    model=r.get('robot_description')==urdf and r.get('robot_description_semantic')==srdf
-   chunk={'start':i,'end':end,'include_geometry':i==0,'status':r['status'],'reason':r['reason'],'checked_states':r['checked_states'],'failures':r['failures'],'scene_equal':bool(same),'model_equal':bool(model)};chunks.append(chunk)
+   chunk={'start':i,'end':end,'include_geometry':i==0,'status':r['status'],'reason':r['reason'],'checked_states':r['checked_states'],'wall_s':time.perf_counter()-chunk_start,'failures':r['failures'],'scene_equal':bool(same),'model_equal':bool(model)};chunks.append(chunk)
    print('COLLISION_CHUNK',i,end,r['status'],r['checked_states'],flush=True)
+   if r['status']=='UNKNOWN' and 'COLLISION_TIME_BUDGET' in r['reason'] and same and model and not resource_retry:
+    # Retry the same candidate, not the whole planning chain, at most once.
+    resource_retry=True;chunk_size=4000;print('COLLISION_RETRY_SAME_CANDIDATE',i,chunk_size,flush=True);continue
    if r['status']!='PASS' or not same or not model:
     result['collision']={'status':r['status'] if r['status']!='PASS' else 'UNKNOWN','checked_states':count,'chunks':chunks,'wall_s':time.perf_counter()-st}
     result['status']='COLLISION_NOT_PASS'
