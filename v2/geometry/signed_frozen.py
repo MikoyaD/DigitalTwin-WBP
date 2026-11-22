@@ -1,5 +1,6 @@
 """Frozen signed charts: actual robot heading and signed nonholonomic progress."""
 import numpy as np
+from ..core import array_store as store
 from scipy.special import roots_legendre
 from ..core.math_tools import quintic_basis
 from ..core.contracts import PathJet, StateSchema, require
@@ -40,7 +41,7 @@ class FrozenSignedChart:
 
 def thaw_signed(record):
  require(record.get('algorithm_variant')=='V2-SIGNED-H-v1','TM_SIGNED_CONTRACT','signed variant required')
- with np.load(record['signed_npz'],allow_pickle=False) as source:
+ with store.load(record.get('signed_arrays',record.get('signed_npz')),allow_pickle=False) as source:
   geom=Geometry({k:source[k] for k in source.files})
  schema=StateSchema(**record['schema'])
  block=MotionBlock('signed_tm_000',tuple(FrozenSignedChart(c) for c in geom.cs),schema)

@@ -49,7 +49,7 @@ def run(config_path, control=None):
  if scene.get('name')!='warehouse' or scene.get('frame')!='world' or scene.get('planning_scene') not in ('current','snapshot'):raise ValueError('UNSUPPORTED_SCENE')
  if scene.get('planning_scene')=='snapshot' and not scene.get('snapshot'):raise ValueError('SCENE_SNAPSHOT_REQUIRED')
  if scene.get('planning_scene')=='current' and scene.get('snapshot') is not None:raise ValueError('SNAPSHOT_REQUIRES_SNAPSHOT_MODE')
- if output.get('npz') is not True or output.get('csv')!='compact' or not isinstance(output.get('plot'),bool):raise ValueError('UNSUPPORTED_OUTPUT: npz true and compact CSV required')
+ if output.get('npz') not in (True,False) or output.get('csv')!='compact' or not isinstance(output.get('plot'),bool):raise ValueError('UNSUPPORTED_OUTPUT: boolean npz and compact CSV required')
  if runtime.get('mode')!='auto':raise ValueError('UNSUPPORTED_RUNTIME_MODE')
  if replay.get('backend')!='none':raise ValueError('UNSUPPORTED_REPLAY_BACKEND')
  until=inp.get('until')
@@ -117,10 +117,11 @@ def run(config_path, control=None):
    if control.get('rho_fallback')==36:command+=['--rho-fallback','36']
    if control.get('signed_recovery'):command+=['--signed-recovery']
    code=prp_from_p.main(command)
-   trajectory=work/'result/PRP/P1/recommended/trajectory.npz'
-   if until=='g1' and trajectory.is_file():
+   trajectory=work/'result/PRP/P1/recommended/trajectory.arrays'
+   if until=='g1' and trajectory.is_dir():
     import numpy as np
-    with np.load(trajectory,allow_pickle=False) as z:fk=ik.check(z['q'][-1])
+    from ..core import array_store as store
+    with store.load(trajectory) as z:fk=ik.check(z['q'][-1])
     (work/'IK/final_fk.json').write_text(json.dumps(fk,indent=2))
     if not fk['ik_feasible']:
      for f in (work/'result/result.json',work/'result/PRP/result.json'):
@@ -138,9 +139,10 @@ def run(config_path, control=None):
    staged=work/'R_input';staged.mkdir()
    if relocated_map:(staged/'parent_path.json').write_text(json.dumps(parent,indent=2))
    else:shutil.copyfile(source/'parent_path.json',staged/'parent_path.json')
-   geo=json.loads((source/'geometry.json').read_text());raw=Path(geo['signed_npz'])
-   resolved=((source/'candidate.npz') if raw.is_absolute() and not raw.exists() and raw.name=='candidate.npz' and (source/'candidate.npz').is_file() else raw if raw.is_absolute() else source/raw).resolve(strict=True)
-   geo['signed_npz']=str(resolved);(staged/'geometry.json').write_text(json.dumps(geo,indent=2))
+   geo=json.loads((source/'geometry.json').read_text());key='signed_arrays' if 'signed_arrays' in geo else 'signed_npz';raw=Path(geo[key])
+   local=source/raw.name
+   resolved=(local if raw.is_absolute() and not raw.exists() and raw.name in ('candidate.npz','candidate.arrays') and local.exists() else raw if raw.is_absolute() else source/raw).resolve(strict=True)
+   geo[key]=str(resolved);(staged/'geometry.json').write_text(json.dumps(geo,indent=2))
    from . import prp_from_r
    command=['--signed-r',str(staged),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
    if snapshot:command+=['--scene-snapshot',str(snapshot)]
@@ -148,7 +150,7 @@ def run(config_path, control=None):
  except Exception:
   (work/'error.log').write_text(traceback.format_exc());print(traceback.format_exc(),file=sys.stderr,flush=True);code=1
  from . import prp_compact
- storage=prp_compact.finalize(run_dir,work,stage)
+ storage=prp_compact.finalize(run_dir,work,stage,retain_dense=control.get('retain_dense',False))
  if storage['status']!='PASS':code=1
  csv=result_dir/'PRP/P1/recommended/trajectory.csv'
  if output['plot'] and csv.is_file():

@@ -38,7 +38,7 @@ PYBOOT
     if [[ "${ARGS[i]}" == --config=* ]]; then ARGS[i]="--config=$CONFIG_ABS"; break; fi
   done
   CALLER_MASTER="${V2_MASTER_URI:-${ROS_MASTER_URI:-}}"
-  exec env -i HOME="$HOME" USER="${USER:-robot}" LOGNAME="${LOGNAME:-robot}" PATH=/usr/local/bin:/usr/bin:/bin LC_ALL=C.UTF-8 ROS_HOME="${ROS_HOME:-$HOME/.ros}" V2_PRP_SCENE_SNAPSHOT="${V2_PRP_SCENE_SNAPSHOT:-}" V2_MASTER_URI="${CALLER_MASTER:-$MASTER}" V2_CALLER_MASTER_URI="$CALLER_MASTER" V2_PRP_CONFIG_MODE=1 V2_EXTRA_SETUP="$OVERLAY" V2_PYTHON="$PYTHON" OPENBLAS_NUM_THREADS=1 \
+  exec env -i HOME="$HOME" USER="${USER:-robot}" LOGNAME="${LOGNAME:-robot}" PATH=/usr/local/bin:/usr/bin:/bin LC_ALL=C.UTF-8 ROS_HOME="${ROS_HOME:-$HOME/.ros}" V2_PRP_SCENE_SNAPSHOT="${V2_PRP_SCENE_SNAPSHOT:-}" V2_PRP_MAX_ATTEMPTS="${V2_PRP_MAX_ATTEMPTS:-6}" V2_PRP_FIRST_REMAINING_ATTEMPTS="${V2_PRP_FIRST_REMAINING_ATTEMPTS:-}" V2_MASTER_URI="${CALLER_MASTER:-$MASTER}" V2_CALLER_MASTER_URI="$CALLER_MASTER" V2_PRP_CONFIG_MODE=1 V2_EXTRA_SETUP="$OVERLAY" V2_PYTHON="$PYTHON" OPENBLAS_NUM_THREADS=1 \
     bash --noprofile --norc -c 'source "$1" >/dev/null; shift; cd "$1"; shift; exec "$V2_PYTHON" -B -m v2.scripts.stage_v2 "$@"' _ "$HERE/env_noetic.sh" "$PKG" "${ARGS[@]}"
 fi
 for arg in "$@"; do

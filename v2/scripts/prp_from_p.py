@@ -2,6 +2,7 @@
 import argparse,json,shutil,time,traceback
 from pathlib import Path
 import numpy as np
+from ..core import array_store as store
 from .stage_v2 import load_parent,limits_for
 from ..geometry.signed_reconstruction import solve,verify
 from ..geometry.signed_frozen import Geometry
@@ -27,10 +28,10 @@ def main(argv=None):
    res['fixed_profile_attempts']=getattr(exc,'rho_attempts',[]);save()
    from ..geometry.signed_recovery import solve as recover
    data,info,(q,u)=recover(path,lim)
-  res['R_solver']=info;np.savez(folder/'candidate.npz',**data);check=verify(data,q,u,lim);(folder/'verification.json').write_text(json.dumps(check,indent=2));res['R_verification']=check;res['R_wall_s']=time.perf_counter()-start
+  res['R_solver']=info;store.save(folder/'candidate.arrays',**data);check=verify(data,q,u,lim);(folder/'verification.json').write_text(json.dumps(check,indent=2));res['R_verification']=check;res['R_wall_s']=time.perf_counter()-start
   if check['status']!='PASS':raise ValueError('SIGNED_R_GEOMETRY_NOT_PASS')
   geom=Geometry(data);modes=[dict(u0=float(c.a),u1=float(c.b),kind='MOVE' if c.sign else 'ADJUST',direction=int(c.sign),anchor=c.anchor.tolist()) for c in geom.cs]
-  rec={'contract_version':4,'algorithm_variant':'V2-SIGNED-H-v1','signed_npz':str((folder/'candidate.npz').resolve()),'schema':parent['path']['schema'],'start':q[0].tolist(),'end':q[-1].tolist(),'construction':{'progress':u.tolist(),'modes':modes,'h_build_s':res['R_wall_s']}}
+  rec={'contract_version':4,'algorithm_variant':'V2-SIGNED-H-v1','signed_arrays':str((folder/'candidate.arrays').resolve()),'schema':parent['path']['schema'],'start':q[0].tolist(),'end':q[-1].tolist(),'construction':{'progress':u.tolist(),'modes':modes,'h_build_s':res['R_wall_s']}}
   (folder/'geometry.json').write_text(json.dumps(rec,indent=2));block=thaw(rec);res['R_formal_reference_tube']=verify_geometry(block,path,rec['construction']);res['status']='SIGNED_R_NUMERICAL_PASS';save();print('R_RESULT PASS',res['R_wall_s'],flush=True)
   if a.until=='r':return 0
   cmd=['--signed-r',str(folder),'--out',str(out/'PRP'),'--until',a.until]

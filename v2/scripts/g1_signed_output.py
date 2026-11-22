@@ -6,6 +6,7 @@ physical time. Geometry and both time transformations are evaluated directly.
 import json
 from pathlib import Path
 import numpy as np
+from ..core import array_store as store
 from scipy.optimize import brentq
 from scipy.special import roots_legendre
 from ..timing.unified_g import _inverse_quintic
@@ -36,6 +37,6 @@ def export_numeric(out,block,path,geo,base,k,x,limits):
  data=[np.concatenate([p[i] for p in pieces]) for i in range(8)]; t,u,q,v,a,j,ci,direction=data; keep=np.r_[True,np.diff(t)>1e-12];t,u,q,v,a,j,ci,direction=[a0[keep] for a0 in data];lat=-np.sin(q[:,2])*v[:,0]+np.cos(q[:,2])*v[:,1];lon=np.cos(q[:,2])*v[:,0]+np.sin(q[:,2])*v[:,1];endpoint=float(max(np.max(abs(q[0]-block.start)),np.max(abs(q[-1]-block.end))));vpeak=np.max(abs(v),axis=0);apeak=np.max(abs(a),axis=0);jpeak=np.max(abs(j),axis=0);dir_ok=bool(np.all(direction[direction!=0]*lon[direction!=0]>=-1e-10));adjust_ok=bool(np.max(abs(v[direction==0,:2]))<1e-9); valid=bool(np.all(np.diff(t)>0) and np.max(vpeak)<=.5+1e-9 and np.max(apeak)<=1+1e-9 and np.max(abs(lat))<1e-8 and dir_ok and adjust_ok and endpoint<1e-6 and max(max(row) for row in seams)<1e-6 and np.max(abs(v[[0,-1]]))<1e-8 and np.max(abs(a[[0,-1]]))<1e-8 and np.all(quaderr<np.array([1e-4,1e-3,1e-2])))
  margin=float(min(np.min(q[:,3:]-limits.arm_lower.value),np.min(limits.arm_upper.value-q[:,3:])))
  valid=valid and margin>=-1e-8
- np.savez_compressed(out/'trajectory.npz',t=t,u=u,q=q,velocity=v,acceleration=a,jerk=j,chart=ci,direction=direction,nodes=k,lambda_values=x)
+ store.save(out/'trajectory.arrays',t=t,u=u,q=q,velocity=v,acceleration=a,jerk=j,chart=ci,direction=direction,nodes=k,lambda_values=x)
  result={'status':'PASS' if valid else 'FAIL','duration_s':float(t[-1]),'velocity_peak':vpeak.tolist(),'acceleration_peak':apeak.tolist(),'jerk_peak':jpeak.tolist(),'jerk_mean':(intabs/t[-1]).tolist(),'lateral_peak':float(np.max(abs(lat))),'endpoint_max':endpoint,'joint_position_margin':margin,'seams_q_v_a':seams,'direction_ok':dir_ok,'adjust_ok':adjust_ok,'chart':charts,'quadrature_span_errors_q_v_a':quaderr.tolist(),'samples':len(t),'collision':'NOT_ATTEMPTED','scope':'event-aware discrete physical-time numerical validation'}
  (out/'result.json').write_text(json.dumps(result,indent=2));return result

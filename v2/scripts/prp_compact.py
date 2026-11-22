@@ -2,6 +2,7 @@
 import json,os,shutil
 from pathlib import Path
 import numpy as np
+from ..core import array_store as store
 
 BUDGET=30*1024*1024
 
@@ -18,7 +19,7 @@ def _measure(root):
    if key not in seen:allocated+=st.st_blocks*512;seen.add(key)
  return logical,allocated
 
-def finalize(root,work,stage,source_r=None):
+def finalize(root,work,stage,source_r=None,retain_dense=False):
  """Copy unique deliverables first; remove only this invocation's work tree last."""
  root=Path(root).resolve();work=Path(work).resolve()
  if work.parent!=root or work.name!='.work' or not work.is_dir():raise ValueError('INVALID_OWNED_WORK_DIRECTORY')
@@ -29,29 +30,33 @@ def finalize(root,work,stage,source_r=None):
  rdir=result/'R' if stage in ('P','new') else work/'R_input'
  geo=rdir/'geometry.json';record=None
  if geo.is_file():
-  record=json.loads(geo.read_text());candidate=Path(record['signed_npz']);
-  if not _copy(candidate,out/'R/candidate.npz'):raise RuntimeError('MISSING_SIGNED_GEOMETRY_PRESERVING_WORK')
-  record['signed_npz']=str((out/'R/candidate.npz').resolve());(out/'R/geometry.json').write_text(json.dumps(record,indent=2))
+  record=json.loads(geo.read_text());candidate=Path(record.get('signed_arrays',record.get('signed_npz')))
+  with store.load(candidate) as source:store.save(out/'R/candidate.arrays',**{k:source[k] for k in source.files})
+  record.pop('signed_npz',None);record['signed_arrays']=str((out/'R/candidate.arrays').resolve());(out/'R/geometry.json').write_text(json.dumps(record,indent=2))
   _copy(rdir/'parent_path.json',out/'R/parent_path.json');_copy(rdir/'verification.json',out/'R/verification.json')
- else:_copy(rdir/'candidate.npz',out/'R/candidate.npz');_copy(rdir/'verification.json',out/'R/verification.json')
+ else:_copy(rdir/'verification.json',out/'R/verification.json')
  for f in ('result.json','error.log'):_copy(result/f,out/f)
  for f in ('result.json','error.log','collision.json','scene_snapshot.bin'):_copy(pr/f,out/'PRP'/f)
  for f in ('result.json','numerical_result.json','trajectory.csv'):_copy(pr/'P0/G'/f,out/'PRP/P0/G'/f)
  _copy(pr/'P0/cases/seg01/C/verification.json',out/'PRP/P0/cases/seg01/C/verification.json')
+ for f in ('A/fast_solver.json','A/smooth_solver.json','C/solver.json'):
+  _copy(pr/'P0/cases/seg01'/f,out/'PRP/P0/cases/seg01'/f)
  if record:
   p=out/'PRP/P0/geometry.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(record,indent=2))
   _copy(out/'R/parent_path.json',out/'PRP/P0/parent_path.json')
- full=pr/'P0/G/trajectory.npz';thin=out/'PRP/P0/G/time_law.npz'
- if full.is_file():
-  with np.load(full,allow_pickle=False) as z:
+ full=pr/'P0/G/trajectory.arrays';thin=out/'PRP/P0/G/time_law.arrays'
+ if full.is_dir():
+  with store.load(full) as z:
    keys=('g1_density_knots','density_x','active_intervals','density_beta','normalized_nodes','g0_density_knots','g0_density_values','g1_density_values')
-   thin.parent.mkdir(parents=True,exist_ok=True);np.savez_compressed(thin,**{k:z[k] for k in keys if k in z.files})
+   thin.parent.mkdir(parents=True,exist_ok=True);store.save(thin,**{k:z[k] for k in keys if k in z.files})
   p=out/'PRP/P0/G/result.json'
   if p.is_file():
-   data=json.loads(p.read_text());data['time_law_npz']=str(thin);data['numeric_verification']=str(out/'PRP/P0/cases/seg01/C/verification.json');p.write_text(json.dumps(data,indent=2))
+   data=json.loads(p.read_text());data.pop('time_law_npz',None);data['time_law_arrays']=str(thin);data['numeric_verification']=str(out/'PRP/P0/cases/seg01/C/verification.json');p.write_text(json.dumps(data,indent=2))
  for f in ('summary.json','recommended_law.json','fast_law.json','error.log'):_copy(pr/'P1'/f,out/'PRP/P1'/f)
- for f in ('trajectory.npz','trajectory.csv','result.json'):_copy(pr/'P1/recommended'/f,out/'PRP/P1/recommended'/f)
- for f in ('trajectory.csv','result.json'):_copy(pr/'P1/fast'/f,out/'PRP/P1/fast'/f)
+ for f in ('trajectory.csv','result.json','events.json'):_copy(pr/'P1/recommended'/f,out/'PRP/P1/recommended'/f)
+ if retain_dense and (pr/'P1/recommended/trajectory.arrays').is_dir():
+  (root/'.dense').mkdir();shutil.copytree(pr/'P1/recommended/trajectory.arrays',root/'.dense/recommended.arrays')
+ for f in ('trajectory.csv','result.json','events.json'):_copy(pr/'P1/fast'/f,out/'PRP/P1/fast'/f)
  for f in ('IK/result.json','IK/target.json','IK/p_endpoint_fk.json','IK/final_fk.json','P/error.log','error.log'):_copy(work/f,out/f)
  # Rewrite retained descriptor paths to the final location. Keep status and
  # numerical evidence, but never leave a time-law pointer into deleted work.
@@ -59,7 +64,7 @@ def finalize(root,work,stage,source_r=None):
   if isinstance(x,dict):return {k:rewrite(v) for k,v in x.items()}
   if isinstance(x,list):return [rewrite(v) for v in x]
   if isinstance(x,str):
-   return x.replace(str(pr/'P0/G/trajectory.npz'),str(thin)).replace(str(pr),str(out/'PRP')).replace(str(rdir),str(out/'R')).replace(str(work/'P'),str(out/'P'))
+   return x.replace(str(pr/'P0/G/trajectory.arrays'),str(thin)).replace(str(pr),str(out/'PRP')).replace(str(rdir),str(out/'R')).replace(str(work/'P'),str(out/'P'))
   return x
  for p in out.rglob('*.json'):
   try:data=json.loads(p.read_text());p.write_text(json.dumps(rewrite(data),ensure_ascii=False,indent=2))

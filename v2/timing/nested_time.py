@@ -1,5 +1,6 @@
 """Exact C density and derivatives, as a base for the existing G1 time warp."""
 import numpy as np
+from ..core import array_store as store
 from scipy.special import roots_legendre
 from ..core.math_tools import quintic_time_jet, chain_rule
 
@@ -19,7 +20,7 @@ class Density:
 
 class NestedBase:
  def __init__(self,path):
-  with np.load(path,allow_pickle=False) as z:
+  with store.load(path,allow_pickle=False) as z:
    self.density=Density(z['g1_density_knots'].copy(),z['density_x'].copy(),z['active_intervals'].copy(),z['density_beta'].copy())
   self.start=float(self.density.k[0]);self.end=float(self.density.k[-1]);self.T=float(self.density.integrate(np.array([self.end]),n=64)[0])
  def from_parameter(self,chart,r):

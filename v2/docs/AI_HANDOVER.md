@@ -6,13 +6,9 @@
 
 证据记号：下文“存档”为实际历史数据，“源码”为现有实现，“用户观察”为人工使用反馈；设计、推断与未验不冒充实测。
 
-## 2026-11-22 续跑准备进展（部分完成）
+## 2026-11-22 零 NPZ 续跑结果（当前）
 
-历史 R04 高密 P0 CSV 已压至 3864 个原始行，保留 501 个已识别事件，最大 XY 误差 0.0486 mm；历史 NPZ 未删除。P0 正式 CSV 导出接入同一策略，但尚未实跑完整求解。正式多目标读取器可核对并消费 attempt_03 独立碰撞 PASS：实际编排验证第一段通过，并在第二段规划前人为停止，第二段起点与第一段终点一致。**正式链仍生成 NPZ，不能按当前用户要求正式续跑**；组分事件仍依赖 CSV，零 NPZ 实跑尚未完成。证据 `research_management/evidence/V2_PRP_ZERO_NPZ_RESUME_READY_20261122/REPORT.md`。
-
-## 2026-11-22 碰撞及存储当前状态
-
-用户要求今后不生成新 NPZ，正式单目标/组分/整体轨迹保留事件和精度验证后的紧凑 CSV；高密计算、数值和碰撞采样独立。**该要求尚未完全实现**：R、A/C P0、P1、拼接及 compact 仍有 NPZ 读写，请勿宣称零 NPZ 或以紧凑数据代替密集验收。固定首段 attempt_03 在原密度碰撞条件下实测 103632 次 PASS；R 几何 4463 次 PASS 是研究对照，不等价正式覆盖。正式分批缩为 8000，超时仅对同候选有限重试，UNKNOWN 不触发重规划。旧结果仍记 UNKNOWN，独立新证据尚未接入复用接口。详情见 `research_management/evidence/V2_PRP_STORAGE_COLLISION_OPT_20261122/REPORT.md`。
+已验 attempt_03 首段复用，新第2段真实 P→R→P0→P1→原密度碰撞 PASS，耗时 17.749873 s、98035 状态；第3段六次预算中三次碰撞、一次相邻 MOVE 不支持、两次 MoveIt -2，任务 PARTIAL，第4/5段未执行。两次本轮目录新 NPZ 数量均为零；R 与 P0 参数保存在 `.arrays`，高密度 `.npy` 临时数组供碰撞和拼接，P0/P1 CSV 紧凑保存，新组分解析事件保存在 JSON。第2段的冻结几何和 P0 时间律已从最终结果重读验证。完整五段拼接、任务 CSV 和完成后密集数组清理尚未实测；部分任务保留 `.dense` 供续跑和诊断。报告：`research_management/evidence/V2_PRP_ZERO_NPZ_FIVE_RESUME_20261122/REPORT.md`。
 
 ## 研究目标与现状
 
@@ -41,7 +37,7 @@
 - **P0**：从 H/R 独立 H-only 冷启动统一 A，五次 smoothstep 密度，再从 A/smooth 优化嵌套 C：`d_C=d_A exp(sum beta_k*64*tau^3*(1-tau)^3)`，局部支持端及一、二阶导数为零；`beta=0` 保留 A。时律需要 A 节点与 `density_x`、`active_intervals`、`density_beta` 完整重建，不能只用总时间或兼容节点字段。实际使用安全时间修正及独立密集事件检查；结果不是全局最优证明。
 - **P1**：在完整 P0 时律上以相对密度 λ 作 SLSQP 时间、平顺和可选时间恢复；源码使用 λ `[0.25,4]`，候选筛选用 jerk 5 参考，恢复分支也在其内部使用采样 jerk 5 作为搜索 guard；它不是最终统一物理 jerk 硬合同。搜索停止或安全放大要如实记录，候选仍须数值/碰撞后验。研究中的预算平顺方案未成为默认。
 - **实际合同** `V2_NINE_DOF_VA_ONLY`：每个九维分量 `|v|≤0.5`、`|a|≤1.0`，XY 使用米制，其余弧度制；不等价于平移合速度或轮速也 ≤0.5。jerk 仅软评价，分别报告各维单位；不把 m/s³ 与 rad/s³ 直接相加。
-- 单段 P1 NPZ 字段参见 `g1_signed_output.py`：`t,u,q,velocity,acceleration,jerk,chart,direction,nodes,lambda_values`；CSV 为 `time_s` 和九维 `q_…` 等标准列，展示 CSV 是源行紧凑采样，非高密度验收替代。数据采用 world/car_link；其他 joint 初态及模型必须匹配。完整任务 NPZ 字段与单段不同，不可假设当前 CSV 绘图器或 Gazebo 协调器能读取。
+- 历史单段 P1 NPZ 字段参见 `g1_signed_output.py`：`t,u,q,velocity,acceleration,jerk,chart,direction,nodes,lambda_values`；CSV 为 `time_s` 和九维 `q_…` 等标准列，展示 CSV 是源行紧凑采样，非高密度验收替代。数据采用 world/car_link；其他 joint 初态及模型必须匹配。完整任务 NPZ 字段与单段不同，不可假设当前 CSV 绘图器或 Gazebo 协调器能读取。
 
 ## 研究演进与有用的失败
 
@@ -64,7 +60,7 @@
 
 实际使用 Git `bc0f65399d1ee2f73faba615cdcbcc5e86edbd25` 与 `global.yaml`，生成 `v2/outputs/prp_yaml/V2-20261122-185203-MULTI-IKPRP-RRTstar/`。首目标六次新 P 各完成 IK、R（22 ρ）、P0、P1 与末端 FK 数值，但全部在碰撞首批 60 s 预算返回 UNKNOWN，分别检查 36486、35115、36746、36690、36741、36714 状态，未报告接触；第 2–5 目标未运行。正式状态 PARTIAL、退出 1，未生成 `task/trajectory.csv`、未绘图；目录实占 127.285 MiB，超 30 MiB。不得把 UNKNOWN 写成碰撞 PASS 或 FAIL。历史 193.672418 s 完整数值及离散碰撞基线继续有效；两次不构成完整任务时间对照。详见仓库外 `research_management/evidence/V2_PRP_FIVE_CSV_ENDTOEND_20261122/`。
 
-当前 PRP YAML 输出命名 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-规划器`；多目标组分 `segments/segment_XX/attempt_XX/result/`，完整时直接从本轮拼接数据生成 `task/trajectory.csv`。此次未到该步骤，完整新任务 CSV 与其显示/绘图仍未实测。用户已将 NPZ 列为废弃交换格式；现有规划内部依赖未移除，不从历史 NPZ 转换。扫描现有 CSV，正式推荐/fast 保留；本轮 12 条只是首段候选（碰撞未知或未进行），不误称完整任务。
+当前 PRP YAML 输出命名 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-规划器`；多目标组分 `segments/segment_XX/attempt_XX/result/`，完整时直接从本轮拼接数据生成 `task/trajectory.csv`。此次未到该步骤，完整新任务 CSV 与其显示/绘图仍未实测。用户已将 NPZ 列为废弃交换格式；本轮新 P 计算链已改为 NPY 临时包，历史 NPZ 只读，不从历史 NPZ 生成展示轨迹。扫描现有 CSV，正式推荐/fast 保留；本轮 12 条只是首段候选（碰撞未知或未进行），不误称完整任务。
 
 ## RViz / Gazebo 展示
 
@@ -93,6 +89,6 @@
 
 用户已对旧前向完整五目标 `V2-20261113-FIVE-GOAL-FINAL-RECOMMENDED/task/trajectory.csv` 实际回放，终端记录 225.725087 s、5638 状态及退出码 0；现场 `v2/outputs/manual-replay-uppnr9ck/state.csv` 有 5638 状态。该证据仅属于该 CSV 的 Gazebo 混合回放，不代表现有整体 NPZ 被支持或规划碰撞合同发生变化。
 
-用户确定 NPZ 为废弃格式：展示扫描不读取历史 NPZ，不从 NPZ 转换 CSV；现有规划内部计算和碰撞流程仍有 NPZ 依赖，本轮未移除它。当前正式 YAML 新结果命名 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-实际规划器`，P/R 续算为 PRP、新 Link6 IK 为 IKPRP；旧非 PRP 实验和历史路径保留。推荐/fast CSV 在 `result/PRP/P1/{recommended,fast}/trajectory.csv`，多目标按 `segments/segment_XX/attempt_XX/result/…`，整体为 `task/trajectory.csv`。整体 CSV 由本轮任务拼接数组直接写出，保留状态与驻留；不删除 CSV 以迎合 30 MiB，超额必须报告。2026-11-22 新五目标实际运行在首段碰撞查询时限失败，完整任务 CSV 和体积未得到；不能把旧结果冒充新代码成果。
+用户确定 NPZ 为废弃格式：展示扫描不读取历史 NPZ，不从 NPZ 转换 CSV；新运行的数值与碰撞链已使用数组包并实际完成第2段，完整任务及所有入口尚需实测。当前正式 YAML 新结果命名 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-实际规划器`，P/R 续算为 PRP、新 Link6 IK 为 IKPRP；旧非 PRP 实验和历史路径保留。推荐/fast CSV 在 `result/PRP/P1/{recommended,fast}/trajectory.csv`，多目标按 `segments/segment_XX/attempt_XX/result/…`，整体为 `task/trajectory.csv`。整体 CSV 由本轮任务拼接数组直接写出，保留状态与驻留；不删除 CSV 以迎合 30 MiB，超额必须报告。2026-11-22 新五目标实际运行在首段碰撞查询时限失败，完整任务 CSV 和体积未得到；不能把旧结果冒充新代码成果。
 
 两种展示模式复用同一 CSV 扫描与三类名称：单目标、多目标、多目标组分。历史父路径缺失、模型引用错误或没有 CSV 的实验不自动伪造可播放输入；碰撞失败轨迹在 Gazebo 前要求用户确认。最新实际扫描、用户日志与测试见仓库外 `research_management/evidence/V2_OUTPUT_SCAN_STANDARD_20261122/`。

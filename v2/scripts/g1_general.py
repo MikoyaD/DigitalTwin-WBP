@@ -55,7 +55,7 @@ def stage_all(args):
  base_law=None
  if g0r.get('time_law_type')=='NESTED_C_V1':
   from ..timing.nested_time import NestedBase
-  base_law=NestedBase(g0r['time_law_npz'])
+  base_law=NestedBase(g0r.get('time_law_arrays',g0r.get('time_law_npz')))
   if abs(base_law.T-T)>1e-6:raise ValueError('G0_TIME_LAW_DURATION_MISMATCH')
  profile=lim.metadata.get('constraint_profile',{}); assert profile.get('identity')=='V2_NINE_DOF_VA_ONLY','G1_LIMIT_CONTRACT'
  out=Path(args.out).resolve();out.mkdir(parents=True,exist_ok=False);summary=dict(status='SEARCH_STARTED',geometry=str(h),g0=str(g0),g0_time_s=T,search=[],stages={},fallback='G0',h_build_s=geo['construction'].get('h_build_s'),g0_compute_s=g0r.get('compute_s'));started=time.perf_counter()

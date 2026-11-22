@@ -3,16 +3,34 @@
 An existing matching ROS scene is reused; otherwise the V2 runtime is started.
 No planning, H fitting, robot execution, or implicit historical scene snapshot.
 """
-import argparse,json,os,time,traceback
+import argparse,json,os,time,traceback,shutil
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
+from ..core import array_store as store
 from . import g0_signed_ac,g1_general,runtime_v2
 from .stage_v2 import HEADER,load_parent
 from .tm_feedback_hg import ChartView
 from ..geometry.tm_rho_feedback_frozen import thaw
 from ..adapters.planning_scene_checker import PlanningSceneChecker,wire
+
+def finalize_direct(p0,p1=None):
+ """Keep analytic C parameters, discard only this invocation's dense bundles."""
+ g=Path(p0)/'G';source=g/'trajectory.arrays';thin=g/'time_law.arrays'
+ if source.is_dir():
+  with store.load(source) as z:
+   keys=('g1_density_knots','density_x','active_intervals','density_beta','normalized_nodes','g0_density_knots','g0_density_values','g1_density_values')
+   store.save(thin,**{k:z[k] for k in keys if k in z.files})
+  for name in ('result.json','numerical_result.json'):
+   f=g/name
+   if f.is_file():
+    data=json.loads(f.read_text());data['time_law_arrays']=str(thin.resolve());f.write_text(json.dumps(data,indent=2))
+  shutil.rmtree(source)
+ for folder in (Path(p0)/'cases',Path(p1) if p1 else None):
+  if folder and folder.exists():
+   for bundle in list(folder.rglob('*.arrays')):
+    if bundle.is_dir():shutil.rmtree(bundle)
 
 
 def ensure_master(uri, config):
@@ -32,8 +50,10 @@ def display_csv(dest, source, p0, output_path=None):
  from ..timing.g0_ac_geometry import chart_events
  from .g1_p01_finalize import law
  from .g1_display_sampling import select_storage_rows
- geo=json.loads((source/'geometry.json').read_text());block=thaw(geo);base_file=p0/'G/trajectory.npz'
- if not base_file.is_file():base_file=p0/'G/time_law.npz'
+ geo=json.loads((source/'geometry.json').read_text());block=thaw(geo);base_file=p0/'G/trajectory.arrays'
+ if not base_file.exists():
+  candidates=(p0/'G/time_law.arrays',p0/'G/time_law.npz',p0/'G/trajectory.npz')
+  base_file=next((p for p in candidates if p.exists()),candidates[0])
  base=NestedBase(base_file)
  spec=json.loads((dest.parent/(dest.name+'_law.json')).read_text());k=np.asarray(spec['nodes']);x=np.asarray(spec['lambda_values'])
  def inverse(t):
@@ -44,11 +64,13 @@ def display_csv(dest, source, p0, output_path=None):
   r=np.array([_inverse_quintic(float(t))*base.end for t in u])
   cuts.extend(np.unique(np.r_[r,base.density.k[(base.density.k>r[0])&(base.density.k<r[-1])],rknots[(rknots>r[0])&(rknots<r[-1])]]))
  events=law(base.density.integrate(np.unique(cuts)),k,x)[0]
- with np.load(dest/'trajectory.npz',allow_pickle=False) as z:
+ data_file=dest/'trajectory.arrays' if (dest/'trajectory.arrays').is_dir() else dest/'trajectory.npz'
+ with store.load(data_file,allow_pickle=False) as z:
   mode=np.where(z['direction']==0,0,1)
   a=np.column_stack([z[t] for t in ('t','q','velocity','acceleration','jerk','u','chart','direction')]);a=np.column_stack((a[:,:-1],mode,a[:,-1]))
   ix=select_storage_rows(a,events);csv=Path(output_path) if output_path else dest/'trajectory.csv'
   if csv.exists():raise FileExistsError('CSV_OUTPUT_EXISTS: '+str(csv))
+  if output_path is None:(dest/'events.json').write_text(json.dumps({'time_s':events.tolist()}))
   np.savetxt(csv,a[ix],delimiter=',',fmt='%.17g',header=','.join(HEADER+['u','chart_index','mode_index','direction']),comments='')
   gaps=np.diff(a[:,0]);return {'path':str(csv),'dense_rows':len(a),'display_rows':len(ix),'bytes':csv.stat().st_size,'events':len(events),'max_gap_s':float(np.max(np.diff(a[ix,0]))),'source_gaps_over_0_02_s':int(np.count_nonzero(gaps>.02)),'source_max_gap_s':float(max(gaps)),'method':'original_dense_rows_50hz_event_extrema_position_refined','scope':'display only; dense source used for acceptance'}
 
@@ -74,13 +96,14 @@ def main(argv=None):
   st=time.perf_counter();p0,p0r=g0_signed_ac.run(source,out/'P0',defer_collision=True,compact_output=a.compact_output);result['p0_wall_s']=time.perf_counter()-st;result['p0']=p0r
   if p0r['status']!='NUMERICAL_PASS_COLLISION_PENDING' or p0r.get('time_law_type')!='NESTED_C_V1':raise RuntimeError('P0_NOT_PASS')
   if a.until=='g0':
+   if not a.compact_output:finalize_direct(p0);result['p0']=json.loads((p0/'G/result.json').read_text())
    result['status']='P0_NUMERICAL_PASS_COLLISION_PENDING';save();print('PRP_RESULT',result['status'],flush=True);return 0
   save();print('P1_START',flush=True);st=time.perf_counter()
   p1,summary=g1_general.stage_all(SimpleNamespace(geometry=str(source),g0=str(p0/'G'),out=str(out/'P1'),allow_deferred_g0_collision=True));result['p1_wall_s']=time.perf_counter()-st;result['p1_summary']=summary
   if summary['status']!='NUMERIC_ONLY_COLLISION_PENDING' or summary['stages']['recommended_numeric']!='PASS':raise RuntimeError('P1_NUMERIC_NOT_PASS')
-  dest=p1/'recommended';z=np.load(dest/'trajectory.npz',allow_pickle=False)
+  dest=p1/'recommended';z=store.load(dest/'trajectory.arrays',allow_pickle=False)
   result['csv']=display_csv(dest,source,p0)
-  if (p1/'fast/trajectory.npz').is_file() and (p1/'fast_law.json').is_file():
+  if (p1/'fast/trajectory.arrays').is_dir() and (p1/'fast_law.json').is_file():
    result['fast_csv']=display_csv(p1/'fast',source,p0)
   from .plot_trajectory import read_csv as plot_read
   from ..adapters.trajectory_viewer import read_csv as viewer_read
@@ -129,7 +152,9 @@ def main(argv=None):
    if end==len(q):break
    i=end-1
   result['collision']={'status':'PASS','checked_states':count,'chunks':chunks,'wall_s':time.perf_counter()-st,'coverage':'adaptive signed geometry, every exported state and every adjacent arithmetic midpoint, discrete only'}
-  (out/'collision.json').write_text(json.dumps(result['collision'],indent=2));result['status']='FIXED_SIGNED_R_SINGLE_PASS';save();print('PRP_RESULT',result['status'],flush=True);return 0
+  (out/'collision.json').write_text(json.dumps(result['collision'],indent=2));result['status']='FIXED_SIGNED_R_SINGLE_PASS'
+  if not a.compact_output:finalize_direct(p0,p1);result['p0']=json.loads((p0/'G/result.json').read_text())
+  save();print('PRP_RESULT',result['status'],flush=True);return 0
  except Exception as e:
   result['error']=repr(e);(out/'error.log').write_text(traceback.format_exc());save();print('PRP_RESULT FAIL',repr(e),flush=True);return 1
 if __name__=='__main__':raise SystemExit(main())

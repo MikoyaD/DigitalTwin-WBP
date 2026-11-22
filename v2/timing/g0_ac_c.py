@@ -3,6 +3,7 @@
 import json,sys,time,argparse,os
 from pathlib import Path
 import numpy as np
+from v2.core import array_store as store
 from scipy.optimize import minimize
 from scipy.special import roots_legendre
 O=Path(os.environ['V2_G0_AC_OUTPUT']).resolve(); E=O; PREV=O
@@ -55,7 +56,7 @@ class Problem:
 
 def main(seg,mode):
  begin=time.perf_counter();case=json.loads((O/'solver/cases.json').read_text())[str(seg)];out=O/'cases'/f'seg{seg:02}'/mode;out.mkdir(parents=True,exist_ok=True)
- hp=PREV/'cases'/f'seg{seg:02}'/'geometry_adapter.npz' if case.get('rho_index')=='move_ordinal' else E/case['H']; zz=np.load(hp);z={k:zz[k] for k in zz.files};h=geo.Geometry(z); src=np.load(PREV/'cases'/f'seg{seg:02}'/'A'/'smooth.npz'); k=src['g1_density_knots']; x0=src['g1_density_values']; nodes=k/40.;bounds=np.array([geo.phi_inv(float(q)) for q in h.edges]); active=[]
+ hp=PREV/'cases'/f'seg{seg:02}'/'geometry_adapter.arrays' if case.get('rho_index')=='move_ordinal' else E/case['H']; zz=store.load(hp);z={k:zz[k] for k in zz.files};h=geo.Geometry(z); src=store.load(PREV/'cases'/f'seg{seg:02}'/'A'/'smooth.arrays'); k=src['g1_density_knots']; x0=src['g1_density_values']; nodes=k/40.;bounds=np.array([geo.phi_inv(float(q)) for q in h.edges]); active=[]
  if mode=='C':
   for b in bounds[1:-1]:
    j=int(np.argmin(abs(nodes-b))); assert abs(nodes[j]-b)<1e-12;active.extend([j-1,j])
@@ -71,7 +72,7 @@ def main(seg,mode):
  raw=r.x.copy();dense=uniq(np.r_[np.linspace(0,1,70001),np.concatenate([np.linspace(a,b,65) for a,b in zip(cuts[:-1],cuts[1:])]),bounds]);u,q,V,A,J,_,c=geo.timeline(h,dense,unit); F=Problem(dense*40,k,active,(V,A,J),16);v,a,j=F.calculate(raw);vr=float(np.max(abs(v))/.5);ar=float(np.max(abs(a)));factor=(max(vr,np.sqrt(ar))*1.004 if max(vr,np.sqrt(ar))>1 else 1.); x=raw[:len(k)]*factor;beta=raw[len(k):-1];adj=np.r_[x,beta,raw[-1]];v,a,j=F.calculate(adj);L=Density(k,x,active,beta);ts=L.integrate(dense*40);keep=np.r_[True,np.diff(ts)>0]
  # Actual preliminary raw/post objective uses sampled jerk rather than epigraph state.
  raw_obj=P.time(raw)+8*np.max(abs(P.calculate(raw)[2]))/5;post_obj=P.time(adj)+8*np.max(abs(P.calculate(adj)[2]))/5
- np.savez_compressed(out/'candidate.npz',t=ts[keep],u=u[keep],q=q[keep],velocity=v[keep],acceleration=a[keep],jerk=j[keep],chart=c[keep],direction=z['directions'][c[keep]],base_s=dense[keep],normalized_nodes=nodes,density_x=x,density_beta=beta,active_intervals=active,g0_density_knots=np.array([0.,1.]),g0_density_values=np.array([40.,40.]),g1_density_knots=k,g1_density_values=x)
+ store.save(out/'candidate.arrays',t=ts[keep],u=u[keep],q=q[keep],velocity=v[keep],acceleration=a[keep],jerk=j[keep],chart=c[keep],direction=z['directions'][c[keep]],base_s=dense[keep],normalized_nodes=nodes,density_x=x,density_beta=beta,active_intervals=active,g0_density_knots=np.array([0.,1.]),g0_density_values=np.array([40.,40.]),g1_density_knots=k,g1_density_values=x)
  record={'success':bool(r.success),'status':int(r.status),'message':str(r.message),'nit':int(r.nit),'wall_s':elapsed,'total_wall_s':time.perf_counter()-begin,'initial_actual_objective':float(P.time(init)+8*np.max(abs(P.calculate(init)[2]))/5),'raw_actual_objective':float(raw_obj),'post_actual_objective':float(post_obj),'solver_epigraph':float(raw[-1]),'raw_training_min_constraint':float(np.min(P.constraints(raw)[:18])),'raw_dense_v_ratio':vr,'raw_dense_a_ratio':ar,'raw_dense_max_violation':max(0.,vr*.5-.5,ar-1.),'post_dense_v_ratio':float(np.max(abs(v))/.5),'post_dense_a_ratio':float(np.max(abs(a))),'safe_scale':float(factor),'raw_duration_s':P.time(raw),'post_duration_s':P.time(adj),'beta':beta.tolist(),'trace':trace};(out/'solver.json').write_text(json.dumps(record,indent=2,allow_nan=False));print(json.dumps({'seg':seg,'mode':mode,**{key:record[key] for key in ['status','nit','wall_s','raw_duration_s','post_duration_s','raw_dense_max_violation','safe_scale','post_dense_v_ratio','post_dense_a_ratio','post_actual_objective']}}),flush=True)
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('seg',type=int,choices=range(1,6));p.add_argument('mode',choices=['Acontinue','C']);args=p.parse_args();main(args.seg,args.mode)

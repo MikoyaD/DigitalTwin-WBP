@@ -3,6 +3,7 @@
 import argparse,json,sys,time,traceback,os
 from pathlib import Path
 import numpy as np
+from v2.core import array_store as store
 from scipy.optimize import minimize
 from scipy.special import roots_legendre
 O=Path(os.environ['V2_G0_AC_OUTPUT']).resolve(); E=O
@@ -17,12 +18,12 @@ def unique_machine(x):
   if not out or y-out[-1]>8*np.finfo(float).eps*max(1.,abs(y),abs(out[-1])):out.append(y)
  return np.asarray(out)
 def setup_h():
- z0=np.load(E/case['H']);z={k:z0[k] for k in z0.files}
+ z0=store.load(E/case['H']);z={k:z0[k] for k in z0.files}
  if case.get('rho_index')=='move_ordinal':
   old={k:z[k] for k in z if k.startswith('rho_')};count=0
   for i,sign in enumerate(z['directions']):
    if sign:z[f'rho_{i}']=old[f'rho_{count}'];count+=1
-  np.savez_compressed(O/'cases'/f'seg{args.segment:02}'/'geometry_adapter.npz',**z)
+  store.save(O/'cases'/f'seg{args.segment:02}'/'geometry_adapter.arrays',**z)
  return geo.Geometry(z),z
 start=time.perf_counter();h,z=setup_h();parent,path=load_parent(Path(case['parent']) if case['parent'].startswith('/') else E/case['parent']);lim=limits_for(parent);vmax=np.r_[lim.xy_component_velocity.value,lim.angular_velocity.value,lim.arm_velocity.value];amax=np.r_[lim.xy_component_acceleration.value,lim.angular_acceleration.value,lim.arm_acceleration.value];assert np.all(vmax==.5) and np.all(amax==1.) and lim.metadata['constraint_profile']['identity']=='V2_NINE_DOF_VA_ONLY'
 _,up,*_=classify(path);bounds=np.array([geo.phi_inv(float(x)) for x in h.edges]);A=unique_machine(np.r_[np.linspace(0,1,27),bounds]);added=[]
@@ -38,7 +39,7 @@ r0=max(float(np.max(abs(v)/vmax)),float(np.sqrt(np.max(abs(a)/amax))),.1)*1.02;i
 # Same event-sensitive candidate samples and same post-scaling policy in all ten cases.
 dense=unique_machine(np.r_[np.linspace(0,1,70001),np.concatenate([np.linspace(a,b,65) for a,b in zip(cuts[:-1],cuts[1:])]),bounds]);u,q,V,A2,J,_,c=geo.timeline(h,dense,unit);full=calc.prep({'s':dense*S,'chart':c,'v':V,'a':A2,'j':J},knots)
 def save(x,name,info,scale=True):
- v,a,j,*_=calc.evaluate(x,full);raw_v=float(np.max(abs(v)/vmax));raw_a=float(np.max(abs(a)/amax));factor=max(1.,raw_v,np.sqrt(raw_a))*1.004 if scale else 1.;x=x*factor;v,a,j,*_=calc.evaluate(x,full);law=geo.Law(knots,x);tt=law.at(dense*S)[3];keep=np.r_[True,np.diff(tt)>0];np.savez_compressed(dest/(name+'.npz'),t=tt[keep],u=u[keep],q=q[keep],velocity=v[keep],acceleration=a[keep],jerk=j[keep],chart=c[keep],direction=z['directions'][c[keep]],base_s=dense[keep],g0_density_knots=np.array([0.,1.]),g0_density_values=np.array([S,S]),g1_density_knots=knots,g1_density_values=x,normalized_nodes=nodes,physical_density=x*S)
+ v,a,j,*_=calc.evaluate(x,full);raw_v=float(np.max(abs(v)/vmax));raw_a=float(np.max(abs(a)/amax));factor=max(1.,raw_v,np.sqrt(raw_a))*1.004 if scale else 1.;x=x*factor;v,a,j,*_=calc.evaluate(x,full);law=geo.Law(knots,x);tt=law.at(dense*S)[3];keep=np.r_[True,np.diff(tt)>0];store.save(dest/(name+'.arrays'),t=tt[keep],u=u[keep],q=q[keep],velocity=v[keep],acceleration=a[keep],jerk=j[keep],chart=c[keep],direction=z['directions'][c[keep]],base_s=dense[keep],g0_density_knots=np.array([0.,1.]),g0_density_values=np.array([S,S]),g1_density_knots=knots,g1_density_values=x,normalized_nodes=nodes,physical_density=x*S)
  record={'duration_s':float(tt[-1]),'raw_v_ratio':raw_v,'raw_a_ratio':raw_a,'safe_scale':float(factor),'solver':info,'training_min_constraint':float(np.min(calc.constraints(x,train)))};(dest/(name+'_solver.json')).write_text(json.dumps(record,indent=2,allow_nan=False));return x
 geo_sample=np.unique(np.r_[np.linspace(0,1,10001),bounds]);gj,_=h.evaluate(geo.phi(geo_sample));meta={'segment':args.segment,'scheme':args.scheme,'source_H':str(E/case['H']),'parent':case['parent'],'profile':lim.metadata['constraint_profile']['identity'],'source_evidence':case['geometry_evidence'],'initial_density_s':S*r0,'nodes':nodes.tolist(),'base_nodes':A.tolist(),'inserted_nodes':unique_machine(added).tolist(),'chart_boundaries_s':bounds.tolist(),'chart_boundaries_u':h.edges.tolist(),'directions':z['directions'].tolist(),'train_samples':len(s),'candidate_samples':len(dense),'geometric_jet_max_by_q_and_order':[np.max(abs(x),axis=0).tolist() for x in gj[1:]],'initial_source':'H jets and effective v/a only','solver_upper_x':upper,'geometry_index_adapter':case.get('rho_index','chart_index')};(dest/'metadata.json').write_text(json.dumps(meta,indent=2,allow_nan=False))
 save(init,'initial',{'method':'H-only constant density'},scale=False)

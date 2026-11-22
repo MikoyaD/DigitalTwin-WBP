@@ -2,6 +2,7 @@
 import copy,datetime,json,math,os,time,traceback,shutil
 from pathlib import Path
 import numpy as np
+from ..core import array_store as store
 import yaml
 from . import prp_global,prp_compact
 
@@ -96,9 +97,14 @@ def run(config_path,c):
     if not cc['scene']['octomap'].startswith('package://'):cc['scene']['octomap']=str(prp_global._path(cc['scene']['octomap'],base))
     if cc['scene'].get('snapshot'):cc['scene']['snapshot']=str(prp_global._path(cc['scene']['snapshot'],base))
     temp=run/('segment_%02d_config.yaml'%i);temp.write_text(yaml.safe_dump(cc,allow_unicode=True,sort_keys=False));attempts=[]
-    for attempt in range(1,int(os.environ.get('V2_PRP_MAX_ATTEMPTS','6'))+1):
-     ctl={'rho_fallback':36,'signed_recovery':True,'run_dir_override':str(run/'segments'/('segment_%02d'%i)/('attempt_%02d'%attempt))};code=prp_global.run(temp,ctl);folder=Path(ctl['run_dir'])
-     result_file=folder/'result/result.json';data=json.loads(result_file.read_text()) if result_file.is_file() else {};error_file=folder/'error.log';error=error_file.read_text()[-3000:] if error_file.is_file() else ''
+    budget=int(os.environ.get('V2_PRP_MAX_ATTEMPTS','6'))
+    if i==len(reuse)+1 and os.environ.get('V2_PRP_FIRST_REMAINING_ATTEMPTS'):
+     budget=min(budget,int(os.environ['V2_PRP_FIRST_REMAINING_ATTEMPTS']))
+    for attempt in range(1,budget+1):
+     ctl={'rho_fallback':36,'signed_recovery':True,'run_dir_override':str(run/'segments'/('segment_%02d'%i)/('attempt_%02d'%attempt)),'retain_dense':True};code=prp_global.run(temp,ctl);folder=Path(ctl['run_dir'])
+     result_file=folder/'result/result.json';data=json.loads(result_file.read_text()) if result_file.is_file() else {};error_file=folder/'error.log'
+     if not error_file.is_file():error_file=folder/'result/error.log'
+     error=error_file.read_text()[-3000:] if error_file.is_file() else ''
      status=data.get('status','NO_RESULT');attempts.append({'attempt':attempt,'directory':str(folder),'exit_code':code,'status':status,'error':data.get('error') or error})
      # Segment budget is not the task budget: retain a numerically and
      # collision-accepted candidate even when its CSV makes it exceed 30 MiB.
@@ -125,18 +131,20 @@ def run(config_path,c):
     parent=json.loads(pfile.read_text());entry['P']={'states':len(parent['path']['q']),'planning':parent['planning'],'start_q':parent['path']['q'][0],'end_q':parent['path']['q'][-1]}
    if code or not entry['result'] or entry['result'].get('status')!='FIXED_SIGNED_R_SINGLE_PASS':
     entry['status']='FAIL';summary['failure_segment']=i;summary['failure_stage_or_reason']=(entry['result'] or {}).get('error','single-stage failure; see error.log');save();break
-   trajectory=folder/'result/PRP/P1/recommended/trajectory.npz';numeric=folder/'result/PRP/P1/recommended/result.json';fk=prp_global._path(descriptor['fk_record'],base) if descriptor else folder/'result/IK/final_fk.json';collision=folder/'result/PRP/collision.json'
-   if not all(x.is_file() for x in (trajectory,numeric,fk,collision)):raise RuntimeError('MISSING_SEGMENT_FINAL_EVIDENCE')
+   dense=folder/'.dense/recommended.arrays';trajectory=dense if dense.is_dir() else folder/'result/PRP/P1/recommended/trajectory.npz';numeric=folder/'result/PRP/P1/recommended/result.json';fk=prp_global._path(descriptor['fk_record'],base) if descriptor else folder/'result/IK/final_fk.json';collision=folder/'result/PRP/collision.json'
+   if not trajectory.exists() or not all(x.is_file() for x in (numeric,fk,collision)):raise RuntimeError('MISSING_SEGMENT_FINAL_EVIDENCE')
    fkr=json.loads(fk.read_text());fkr=fkr.get('P1_final_fk',fkr);cr=independent[1] if independent else json.loads(collision.read_text());nr=json.loads(numeric.read_text())
    if not fkr.get('ik_feasible') or cr.get('status')!='PASS' or nr.get('status')!='PASS':raise RuntimeError('SEGMENT_FINAL_EVIDENCE_FAIL')
    if independent:data=independent[0]
    else:
-    with np.load(trajectory,allow_pickle=False) as z: data={k:z[k] for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
-   # The segment display already contains all exporter time-law and chart
-   # events. If it is absent, preserve every source row rather than inventing
-   # event metadata for an older reusable segment.
+    with store.load(trajectory) as z: data={k:z[k] for k in ('t','u','q','velocity','acceleration','jerk','chart','direction')}
+   # New segments persist exact analytic event times independently of the CSV.
+   # Old accepted checkpoints may use their previously retained display rows.
+   event_file=folder/'result/PRP/P1/recommended/events.json'
    csv=folder/'result/PRP/P1/recommended/trajectory.csv'
-   data['storage_events']=np.loadtxt(csv,delimiter=',',skiprows=1,usecols=[0],ndmin=1) if csv.is_file() else data['t']
+   if event_file.is_file():data['storage_events']=np.asarray(json.loads(event_file.read_text())['time_s'])
+   elif descriptor and csv.is_file():data['storage_events']=np.loadtxt(csv,delimiter=',',skiprows=1,usecols=[0],ndmin=1)
+   else:raise RuntimeError('SEGMENT_ANALYTIC_EVENTS_MISSING')
    if not segments:
     initial=data['q'][0]-np.asarray(task['start_q']);initial[2]=math.remainder(float(initial[2]),2*math.pi)
     if np.max(np.abs(initial))>1e-10:raise RuntimeError('REUSE_TASK_START_MISMATCH')
@@ -157,7 +165,6 @@ def run(config_path,c):
     rows.append({'t':np.array([end+1.]),'q':q[-1:],'velocity':np.zeros((1,9)),'acceleration':np.zeros((1,9)),'jerk':np.zeros((1,9)),'segment':np.array([i+1],dtype=np.int16),'chart':z['chart'][-1:],'direction':np.array([0],dtype=np.int8)});events.append({'segment':i+1,'motion_start_s':offset,'motion_end_s':end,'dwell_end_s':end+1.});offset=end+1.;lasttheta=float(q[-1,2])
    allz={k:np.concatenate([r[k] for r in rows]) for k in rows[0]};t=allz['t'];q=allz['q'];v=allz['velocity'];a=allz['acceleration'];j=allz['jerk'];lat=-np.sin(q[:,2])*v[:,0]+np.cos(q[:,2])*v[:,1];lon=np.cos(q[:,2])*v[:,0]+np.sin(q[:,2])*v[:,1];direction=allz['direction'];tol=1e-7
    if np.any(np.diff(t)<=0) or np.max(abs(v))>.5+tol or np.max(abs(a))>1.+tol or np.max(abs(lat))>1e-6 or np.any(lon[direction>0]<-tol) or np.any(lon[direction<0]>tol) or np.any(abs(lon[direction==0])>tol):raise RuntimeError('TASK_NUMERIC_NOT_PASS')
-   np.savez_compressed(run/'task_trajectory.npz',**allz)
    taskdir=run/'task';taskdir.mkdir()
    csv_rows=write_task_csv(dict(allz,storage_events=storage_events),taskdir/'trajectory.csv')
    summary['task']={'numerical':'PASS','collision':'PASS_BY_SAME_SCENE_SEGMENTS_AND_REPEATED_HOLDS','collision_states':sum(x['collision']['checked_states'] for x in summary['segments']),'duration_s':float(t[-1]),'motion_s':float(t[-1]-5),'dwell_s':5.,'samples':len(t),'events':events,'velocity_peak':np.max(abs(v),axis=0).tolist(),'acceleration_peak':np.max(abs(a),axis=0).tolist(),'jerk_peak':np.max(abs(j),axis=0).tolist(),'jerk_timeweighted_mean':(sum(np.trapz(np.abs(z['jerk']),z['t'],axis=0) for z in segments)/t[-1]).tolist(),'lateral_max':float(np.max(abs(lat))),'scope':'discrete segment collision; holds reuse identical checked endpoint states'}
@@ -180,13 +187,12 @@ def run(config_path,c):
      if jf.is_file():jf.write_text(json.dumps(replace_paths(json.loads(jf.read_text())),ensure_ascii=False,indent=2))
    for p,entry in zip(snapshots,summary['segments']):
     if not entry.get('reused'):p.unlink()
-   # All unique states are now retained in task NPZ. Remove only per-segment
-   # display and dense duplicates from this run, after the task is saved.
+   # Dense arrays are task-owned and needed for recovery until the stitched
+   # CSV and all checks are complete. Reused historical inputs are untouched.
    for entry in summary['segments']:
-    if entry.get('reused'):continue
-    folder=Path(entry['directory'])
-    for f in (folder/'result/PRP/P1/recommended/trajectory.npz',):
-     if f.is_file():f.unlink()
+    if not entry.get('reused'):
+     dense=Path(entry['directory'])/'.dense'
+     if dense.is_dir():shutil.rmtree(dense)
    source=Path(summary['segments'][0]['directory'])/'result/P/parent_path.json'
    if not source.is_file():raise RuntimeError('TASK_PARENT_METADATA_MISSING')
    summary['task']['csv']={'path':str(taskdir/'trajectory.csv'),'bytes':(taskdir/'trajectory.csv').stat().st_size,'rows':csv_rows,'source_rows':len(t),'sampling':'original rows, 50 Hz target, event/extrema and position-error refinement; dense acceptance retained'}
