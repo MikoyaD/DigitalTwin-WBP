@@ -241,10 +241,24 @@ class Session:
         self.aliases={}
         if self.runs_dir is not None:
             from .run_discovery import discover_runs,discover_minimal
-            autos,auto_errors=discover_runs(self.runs_dir);errors+=auto_errors
-            minimal,minimal_errors=discover_minimal(self.runs_dir.parent,summary_only=self.summary_only);errors+=minimal_errors
-            autos.update(minimal)
-            identities={};merged={}
+            # Resolve only configured scan roots: retain canonical() checks for
+            # every discovered run, file and reference beneath those roots.
+            runs_dir=Path(self.runs_dir).expanduser().resolve()
+            autos,auto_errors=discover_runs(runs_dir);errors+=auto_errors
+            project_root=V2.parents[3]
+            roots=[runs_dir.parent]
+            roots.extend(sorted(project_root.glob('v2_single_retry_*/outputs')))
+            roots.extend(Path(p).expanduser() for p in os.environ.get('V2_DISCOVERY_ROOTS','').split(os.pathsep) if p)
+            identities={};merged={};seen_roots=set()
+            for root in roots:
+                root=root.resolve()
+                if root in seen_roots:continue
+                seen_roots.add(root)
+                minimal,minimal_errors=discover_minimal(root,summary_only=self.summary_only);errors+=minimal_errors
+                for name,entry in minimal.items():
+                    if name in autos and str(autos[name].get('csv','')) != str(entry.get('csv','')):
+                        name=str(root)+'/'+name
+                    autos[name]=entry
             for name,entry in autos.items():
                 m=entry['summary'];identity=str((entry['run']/m['csv']['path']).resolve())
                 if identity in identities:
@@ -252,7 +266,7 @@ class Session:
                 identities[identity]=name;merged[name]=entry
             for name,folder in self.available.items():
                 m=json.loads((folder/'metadata.json').read_text());identity=str((folder/m['csv']['path']).resolve())
-                if identity in identities and m.get('validation_status')=='ARCHIVED_NUMERICAL_AND_DISCRETE_COLLISION_PASS':
+                if identity in identities:
                     self.aliases[name]=identities[identity]
                 else:merged[name]=folder
             self.available=dict(sorted(merged.items(),key=lambda x:trajectory_order(*x)))

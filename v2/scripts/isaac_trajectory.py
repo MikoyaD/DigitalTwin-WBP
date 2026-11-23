@@ -113,6 +113,51 @@ def launch_playback(source, stage, gui=False, max_duration=None):
     return code,run
 
 
+def _final_p1_evidence(path):
+    """Return selection and validation facts only with explicit PRP evidence."""
+    path=Path(path)
+    if path.parent.name=='task':
+        root=path.parent.parent
+        task=json.loads((path.parent/'result.json').read_text())
+        result=json.loads((root/'result.json').read_text())
+        segments=result.get('segments',[])
+        if (result.get('status')!='SIGNED_FIVE_GOAL_TASK_PASS' or task.get('status')!='TASK_PASS'
+            or len(segments)!=5 or any(x.get('status')!='PASS' for x in segments)
+            or result.get('task',{}).get('numerical')!='PASS'
+            or 'FAIL' in str(result.get('task',{}).get('collision','')).upper()
+            or task.get('collision',{}).get('status')=='FAIL'
+            or not task.get('source_parent')):return None
+        first=Path(segments[0]['directory'])/'result/P/parent_path.json'
+        if (path.parent/task['source_parent']).resolve()!=first.resolve():return None
+        return '多目标完整','PASS',str(result['task'].get('collision','UNKNOWN'))
+    if path.parent.name!='recommended' or path.parent.parent.name!='P1':return None
+    run=path.parents[4]
+    overall=json.loads((run/'result/result.json').read_text())
+    numeric=json.loads((path.parent/'result.json').read_text())
+    collision=json.loads((run/'result/PRP/collision.json').read_text())
+    if (overall.get('status')!='FIXED_SIGNED_R_SINGLE_PASS' or numeric.get('status')!='PASS'
+        or collision.get('status')=='FAIL'):return None
+    kind='单目标'
+    # An attempt belongs to a multi-task only if its parent task explicitly
+    # selects this attempt; an orphan attempt is never a standalone result.
+    if 'segments' in path.parts or any(x.startswith('attempt_') for x in path.parts):
+        kind='多目标组分';selected=False
+        for ancestor in run.parents:
+            result_file=ancestor/'result.json'
+            if not result_file.is_file():continue
+            try:parent=json.loads(result_file.read_text())
+            except (ValueError,OSError):continue
+            segments=parent.get('segments')
+            if not isinstance(segments,list):continue
+            for segment in segments:
+                directory=segment.get('directory')
+                if directory and Path(directory).resolve()==run.resolve() and segment.get('status')=='PASS':
+                    selected=True;break
+            break
+        if not selected:return None
+    return kind,'PASS',str(collision.get('status','UNKNOWN'))
+
+
 def scan_final_p1():
     """Reuse the V2 Session scanner and select only verified final P1 CSVs."""
     from .gazebo_interactive import GazeboSession
@@ -125,17 +170,9 @@ def scan_final_p1():
             status=item.get('summary',{}).get('validation_status','UNVALIDATED') if isinstance(item,dict) else json.loads((item/'metadata.json').read_text()).get('validation_status','UNVALIDATED')
             if status not in ('VERIFIED','DENSE_SOURCE_VERIFIED_DISPLAY_ONLY','ARCHIVED_NUMERICAL_AND_DISCRETE_COLLISION_PASS','COLLISION_PENDING','COLLISION_NOT_ATTEMPTED','COLLISION_UNKNOWN'):
                 continue
-            parent=path.parent
-            if parent.name=='recommended' and parent.parent.name=='P1':
-                result_file=parent.parent.parent/'result.json'
-                if result_file.is_file():
-                    overall=str(json.loads(result_file.read_text()).get('status','')).upper()
-                    if 'FAIL' in overall or 'NOT_PASS' in overall:continue
-                kind=trajectory_kind(name,item)
-            elif parent.name=='task' and isinstance(item,dict) and trajectory_kind(name,item)=='多目标':
-                kind='多目标完整'
-            else:
-                continue
+            evidence=_final_p1_evidence(path)
+            if evidence is None:continue
+            kind,numerical,collision=evidence
             # The Isaac reader requires q/v/a and signed direction; do not list
             # older preview formats that cannot be consumed by this worker.
             import csv
@@ -145,7 +182,7 @@ def scan_final_p1():
             duration=(item['summary'] if isinstance(item,dict) else json.loads((item/'metadata.json').read_text())).get('duration_s')
             if duration is None:
                 data=load_trajectory(path);duration=data.time_s[-1]-data.time_s[0]
-            found.append({'name':name,'kind':kind,'path':str(path),'duration_s':duration,'status':status})
+            found.append({'name':name,'kind':kind,'path':str(path),'duration_s':duration,'status':status,'selection':'FINAL','numerical':numerical,'collision':collision,'display_only':status=='DENSE_SOURCE_VERIFIED_DISPLAY_ONLY'})
         except (OSError,ValueError,KeyError,StopIteration):
             continue
     return found
@@ -163,7 +200,7 @@ def interactive_isaac():
                 print('请选择 1、2 或 q。',flush=True);continue
             tracks=scan_final_p1()
             for i,item in enumerate(tracks,1):
-                print('%d. %s | %s | %.6f s | %s | %s'%(i,item['name'],item['kind'],item['duration_s'],item['status'],item['path']),flush=True)
+                print('%d. %s | %s | %.6f s | 最终:%s 数值:%s 碰撞:%s 展示:%s | %s'%(i,item['name'],item['kind'],item['duration_s'],item['selection'],item['numerical'],item['collision'],item['status'],item['path']),flush=True)
             counts={kind:sum(x['kind']==kind for x in tracks) for kind in ('单目标','多目标组分','多目标完整')}
             print('最终 P1 数量：'+json.dumps(counts,ensure_ascii=False),flush=True)
             selected=input('选择编号；m 输入 CSV 绝对路径；q 返回 > ').strip()
