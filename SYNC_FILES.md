@@ -49,3 +49,7 @@ V2_PRP_CONFIG_MODE=1 bash --noprofile --norc -c 'source v2/scripts/env_noetic.sh
 ## 2026-11-22 阶段基线与外部数据
 
 Git 同步源码、配置及文档，不同步 `v2/outputs`、研究 evidence 或模型资产。五目标任务目录后验 29818880 B 不含复用的外部首两段检查点和共享场景；若要在另一台复现该**实验资料**而非仅运行源码，需单独、经用户指定传输对应 outputs 与 `research_management/evidence/V2_PRP_FIVE_RECOVERY_STORAGE_20261122/` 和 `V2_PRP_STORAGE_COLLISION_OPT_20261122/`。历史 G1 稠密重建依赖其 sidecar 所指定的历史几何与时间律，不能只拷 CSV 就宣称能重建。大型静态资源各机保留，不做日常 Git/rsync；无须迁移 Codex 会话或引入 LFS。
+
+## 2026-11-23 最小工程恢复补充
+
+V2 实际 URDF 位于本包 `config/gazebo_combined_robot.urdf`，但其 mesh URI 依赖相邻 `robot_description` ROS 包。`v2/deployment/robot_description/` 保存该外部包本机 `package.xml`、`CMakeLists.txt` 文本，以便目标机缺少包定义时人工恢复；不会自动覆盖目标机现有包，也不包含或同步 mesh。Gazebo world 仍需另行提供 `aws_robomaker_small_warehouse_world` ROS 包及既有资产。当前 `global.yaml` 采用当前 PlanningScene 与仓库 `map/warehouse_cropped.bt`，snapshot 为 null；如用户选择其他场景快照，需要单独提供匹配的真实文件。完整新机启动尚未验证。
