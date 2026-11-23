@@ -13,8 +13,8 @@ if [[ "${V2_PRP_CONFIG_MODE:-0}" == 1 ]]; then
   if [[ -n "${V2_EXTRA_SETUP:-}" ]]; then _v2_setups+=("$V2_EXTRA_SETUP"); fi
   _v2_setups+=("$(cd -- "$_v2_pkg/../.." && pwd -P)/devel/setup.bash")
 else
-  # Preserve the historical entry points' existing overlay contract.
-  _v2_setups=(/opt/ros/noetic/setup.bash /home/robot/ws_moveit/devel/setup.bash /home/robot/digitaltwin/zzs_ws/devel/setup.bash)
+  # The laboratory uses system MoveIt and its existing catkin workspace.
+  _v2_setups=(/opt/ros/noetic/setup.bash /home/robot/digitaltwin/zzs_ws/devel/setup.bash)
 fi
 for setup in "${_v2_setups[@]}"; do
   if [[ ! -r "$setup" ]]; then printf 'MISSING_SETUP %s\n' "$setup" >&2; return 30 2>/dev/null || exit 30; fi
