@@ -7,7 +7,10 @@ CONFIG_MODE=0
 # The new no-argument menu uses the package-relative Noetic workspace setup.
 # Explicit legacy invocations keep their previous environment contract.
 if [[ "$#" == 0 ]]; then CONFIG_MODE=1; fi
-for arg in "$@"; do if [[ "$arg" == "--gazebo-csv" ]]; then URI="${V2_MASTER_URI:-http://127.0.0.1:11511}"; CONFIG_MODE=1; fi; done
+for arg in "$@"; do
+  if [[ "$arg" == "--gazebo-csv" ]]; then URI="${V2_MASTER_URI:-http://127.0.0.1:11511}"; CONFIG_MODE=1; fi
+  if [[ "$arg" == "--isaac-read" || "$arg" == --isaac-read=* ]]; then CONFIG_MODE=1; fi
+done
 if [[ "$CONFIG_MODE" == 0 ]]; then
   exec env -i HOME="$HOME" USER="${USER:-robot}" LOGNAME="${LOGNAME:-robot}" PATH=/usr/local/bin:/usr/bin:/bin LC_ALL=C.UTF-8 DISPLAY="${DISPLAY:-}" XAUTHORITY="${XAUTHORITY:-}" V2_MASTER_URI=http://127.0.0.1:11411 \
     bash --noprofile --norc -c 'source "$1" >/dev/null; shift; cd "$1"; shift; exec python3 -B -m v2.scripts.view_entry "$@"' _ "$HERE/env_noetic.sh" "$PKG" "$@"

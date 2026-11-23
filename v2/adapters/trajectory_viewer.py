@@ -35,7 +35,7 @@ def resolve(ref, folder):
     return path
 
 
-def read_csv(path, columns=None):
+def read_csv(path, columns=None, include_motion=False):
     with Path(path).open(newline='') as stream:
         reader = csv.DictReader(stream)
         header = reader.fieldnames or []
@@ -45,16 +45,30 @@ def read_csv(path, columns=None):
                               else ['x', 'y', 'theta'] + list(NAMES[3:]))
         if len(columns) != 9 or len(set(columns)) != 9 or any(n not in header for n in ['time_s'] + columns):
             raise ValueError('CSV_REQUIRES_TIME_AND_NINE_POSITIONS')
-        times, positions = [], []
+        motion_columns = [prefix + name for prefix in ('v_', 'a_') for name in NAMES]
+        if include_motion and any(name not in header for name in motion_columns + ['direction']):
+            raise ValueError('CSV_REQUIRES_VELOCITY_ACCELERATION_DIRECTION')
+        times, positions, velocities, accelerations, directions = [], [], [], [], []
         for row in reader:
             t = float(row['time_s']); q = tuple(float(row[n]) for n in columns)
             if not all(math.isfinite(x) for x in (t,) + q):
                 raise ValueError('NONFINITE_CSV')
             if times and t <= times[-1]:
                 raise ValueError('TIME_NOT_STRICTLY_INCREASING')
+            if include_motion:
+                v = tuple(float(row['v_' + name]) for name in NAMES)
+                a = tuple(float(row['a_' + name]) for name in NAMES)
+                direction = float(row['direction'])
+                if not all(math.isfinite(x) for x in v + a + (direction,)):
+                    raise ValueError('NONFINITE_CSV')
+                if direction not in (-1, 0, 1):
+                    raise ValueError('INVALID_DIRECTION')
+                velocities.append(v); accelerations.append(a); directions.append(int(direction))
             times.append(t); positions.append(q)
-    if len(times) < 2 or times[0] < 0 or any(round(b*1e9)<=round(a*1e9) for a,b in zip(times,times[1:])):
+    if len(times) < 2 or times[0] < 0 or (not include_motion and any(round(b*1e9)<=round(a*1e9) for a,b in zip(times,times[1:]))):
         raise ValueError('NONNEGATIVE_ROS_TIME_WITH_TWO_DISTINCT_POINTS_REQUIRED')
+    if include_motion:
+        return tuple(times), tuple(positions), tuple(velocities), tuple(accelerations), tuple(directions)
     return tuple(times), tuple(positions), columns
 
 

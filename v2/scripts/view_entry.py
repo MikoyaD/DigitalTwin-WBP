@@ -16,7 +16,13 @@ def main():
     parser.add_argument('--gazebo-csv',help='Replay a standard single-segment CSV on an already-running isolated Gazebo master')
     parser.add_argument('--replay-output',help='Directory for replay observations')
     parser.add_argument('--replay-open-rviz',action='store_true',help='explicitly open an additional RViz for Gazebo replay')
+    parser.add_argument('--isaac-read', help='read a P1 recommended CSV or its run directory')
+    parser.add_argument('--isaac-map', help='optional Isaac scene USD path, recorded only')
     args=parser.parse_args()
+    if args.isaac_map and not args.isaac_read: parser.error('--isaac-map requires --isaac-read')
+    if args.isaac_read:
+        from .isaac_trajectory import read_and_print
+        return read_and_print(args.isaac_read, args.isaac_map)
     if args.gazebo_csv:
         from .gazebo_csv_replay import run
         if args.replay_open_rviz and args.no_rviz:parser.error('--replay-open-rviz conflicts with --no-rviz')
@@ -25,7 +31,7 @@ def main():
     # no-argument entry only, before rospy connects to either master.
     if len(sys.argv)==1:
         while True:
-            try: choice=input('展示模式：1 RViz参考轨迹 | 2 Gazebo+RViz实际状态 | q 退出 > ').strip().lower()
+            try: choice=input('展示模式：1 RViz参考轨迹 | 2 Gazebo+RViz实际状态 | 3 Isaac Sim | q 退出 > ').strip().lower()
             except EOFError:return 0
             if choice in ('q','quit'):return 0
             if choice=='1':break
@@ -33,7 +39,11 @@ def main():
                 from .gazebo_interactive import interactive_gazebo
                 interactive_gazebo()
                 continue
-            print('请选择 1、2 或 q。',flush=True)
+            if choice=='3':
+                from .isaac_trajectory import interactive_isaac
+                interactive_isaac()
+                continue
+            print('请选择 1、2、3 或 q。',flush=True)
     start(yaml.safe_load(Path(args.config).read_text()),for_display=True)
     rviz=None
     try:
