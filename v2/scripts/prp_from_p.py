@@ -12,7 +12,8 @@ from . import prp_from_r
 
 
 def main(argv=None):
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--parent',required=True);p.add_argument('--out',required=True);p.add_argument('--until',choices=('r','g0','g1'),default='g1');p.add_argument('--scene-snapshot');p.add_argument('--scene-map');p.add_argument('--compact-output',action='store_true');p.add_argument('--rho-controls',type=int,default=22,help='number of rho spline controls (default: 22)');p.add_argument('--rho-fallback',type=int,choices=[36],help='retry exact infeasibility with 36 controls and the same profile');p.add_argument('--signed-recovery',action='store_true',help='bounded theta/rho recovery after exact fixed-profile infeasibility');a=p.parse_args(argv)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--parent',required=True);p.add_argument('--out',required=True);p.add_argument('--until',choices=('r','g0','g1'),default='g1');p.add_argument('--scene-snapshot');p.add_argument('--scene-map');p.add_argument('--compact-output',action='store_true');p.add_argument('--rho-controls',type=int,default=None,help='number of rho spline controls (default: 36; 22 when --rho-fallback 36 is requested)');p.add_argument('--rho-fallback',type=int,choices=[36],help='retry exact infeasibility with 36 controls and the same profile');p.add_argument('--signed-recovery',action='store_true',help='bounded theta/rho recovery after exact fixed-profile infeasibility');a=p.parse_args(argv)
+ if a.rho_controls is None:a.rho_controls=22 if a.rho_fallback is not None else 36
  src=Path(a.parent).resolve(strict=True);src=src.parent if src.is_file() and src.name=='parent_path.json' else src
  out=Path(a.out).resolve();out.mkdir(parents=True,exist_ok=False);res={'status':'R_STARTED','input_P':str(src),'collision':'NOT_ATTEMPTED'};t=time.perf_counter()
  def save():res['wall_s']=time.perf_counter()-t;(out/'result.json').write_text(json.dumps(res,indent=2))

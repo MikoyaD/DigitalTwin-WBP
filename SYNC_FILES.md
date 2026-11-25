@@ -53,3 +53,7 @@ Git 同步源码、配置及文档，不同步 `v2/outputs`、研究 evidence �
 ## 2026-11-23 最小工程恢复补充
 
 V2 实际 URDF 位于本包 `config/gazebo_combined_robot.urdf`，但其 mesh URI 依赖相邻 `robot_description` ROS 包。`v2/deployment/robot_description/` 保存该外部包本机 `package.xml`、`CMakeLists.txt` 文本，以便目标机缺少包定义时人工恢复；不会自动覆盖目标机现有包，也不包含或同步 mesh。Gazebo world 仍需另行提供 `aws_robomaker_small_warehouse_world` ROS 包及既有资产。当前 `global.yaml` 采用当前 PlanningScene 与仓库 `map/warehouse_cropped.bt`，snapshot 为 null；如用户选择其他场景快照，需要单独提供匹配的真实文件。完整新机启动尚未验证。
+
+## 2026-11-25 实验室源码基线
+
+本分支包含 Signed R 36 控制点默认值、规划任务目录与预算规则、Isaac 120 Hz 物理执行及评价源码。实验室已通过十条轨迹的简化接触模型物理执行；仓储障碍物的完整物理碰撞和实机尚未验证。执行评价数据、历史轨迹、PlanningScene 快照、USD/mesh 与 Isaac Sim 软件均是本机外部依赖，不包含在本次源码提交中。`v2/outputs` 在实验室为指向旧工程备份的符号链接；迁机须独立保留其实际数据。相关运行条件、控制器、数据字段及评价口径参见 `v2/docs/V2_PRP_RUNBOOK.md`、`ISAAC_PHYSICAL_TRACKING_BASELINE.md`、`EXECUTION_DATA_DICTIONARY.md` 和 `EXECUTION_EVALUATION.md`。本次提交不宣称仅凭 Git 克隆即可复现该实验室环境。

@@ -321,7 +321,10 @@ def main(argv=None):
         from .prp_from_r import display_csv
         root=Path(args.export_csv).resolve(strict=True);dest=Path(args.csv_out).resolve()
         if root==dest or root in dest.parents:parser.error('--csv-out must be outside the budgeted result directory')
-        data=display_csv(root/'result/PRP/P1/recommended',root/'result/R',root/'result/PRP/P0',dest)
+        if (root/'Parameterization').is_dir():
+            data=display_csv(root/'Parameterization/P1/recommended',root/'Reconstruction',root/'Parameterization/P0',dest)
+        else:
+            data=display_csv(root/'result/PRP/P1/recommended',root/'result/R',root/'result/PRP/P0',dest)
         print(json.dumps(data,indent=2));return 0
     if args.csv_out:parser.error('--csv-out requires --export-csv')
     if not args.stage and not args.until:

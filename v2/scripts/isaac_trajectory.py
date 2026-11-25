@@ -37,7 +37,8 @@ def map_config(usd=None):
 def locate(source):
     path = Path(source).expanduser().resolve(strict=True)
     if path.is_dir():
-        candidates = (path / 'result/PRP/P1/recommended/trajectory.csv',
+        candidates = (path / 'Parameterization/P1/recommended/trajectory.csv',
+                      path / 'result/PRP/P1/recommended/trajectory.csv',
                       path / 'PRP/P1/recommended/trajectory.csv',
                       path / 'trajectory.csv')
         path = next((p for p in candidates if p.is_file()), None)
@@ -127,14 +128,16 @@ def _final_p1_evidence(path):
             or 'FAIL' in str(result.get('task',{}).get('collision','')).upper()
             or task.get('collision',{}).get('status')=='FAIL'
             or not task.get('source_parent')):return None
-        first=Path(segments[0]['directory'])/'result/P/parent_path.json'
+        first=Path(segments[0]['directory'])/'ParentPath/parent_path.json'
+        if not first.exists(): first=Path(segments[0]['directory'])/'result/P/parent_path.json'
         if (path.parent/task['source_parent']).resolve()!=first.resolve():return None
         return '多目标完整','PASS',str(result['task'].get('collision','UNKNOWN'))
     if path.parent.name!='recommended' or path.parent.parent.name!='P1':return None
-    run=path.parents[4]
-    overall=json.loads((run/'result/result.json').read_text())
+    is_new=path.parents[2].name=='Parameterization'
+    run=path.parents[3] if is_new else path.parents[4]
+    overall=json.loads((run/('result.json' if is_new else 'result/result.json')).read_text())
     numeric=json.loads((path.parent/'result.json').read_text())
-    collision=json.loads((run/'result/PRP/collision.json').read_text())
+    collision=json.loads((run/('Parameterization/collision.json' if is_new else 'result/PRP/collision.json')).read_text())
     if (overall.get('status')!='FIXED_SIGNED_R_SINGLE_PASS' or numeric.get('status')!='PASS'
         or collision.get('status')=='FAIL'):return None
     kind='单目标'
@@ -194,9 +197,7 @@ def interactive_isaac():
         try:
             choice=input('isaac> ').strip().lower()
             if choice in ('q','quit'):return
-            if choice=='2':
-                print('轨迹执行功能待开发。',flush=True);continue
-            if choice!='1':
+            if choice not in ('1','2'):
                 print('请选择 1、2 或 q。',flush=True);continue
             tracks=scan_final_p1()
             for i,item in enumerate(tracks,1):
@@ -221,6 +222,15 @@ def interactive_isaac():
                 stage=input('Stage USD 绝对路径 > ').strip()
                 if not Path(stage).is_absolute():raise ValueError('请输入 Stage 绝对路径')
             else:raise ValueError('无效 Stage 选择')
+            if choice=='2':
+                path=Path(data.source)
+                if path.parent.name=='recommended' and path.parent.parent.name=='P1' and path.parents[2].name=='Parameterization':task=path.parents[3]
+                elif path.parent.name=='task' and path.name=='trajectory.csv':task=path.parents[1]
+                else:raise ValueError('物理执行需要新结构的最终 P1 或多目标完整任务')
+                cmd=['/usr/bin/python3','-m','v2.scripts.isaac_execute','--task',str(task),'--trajectory',str(path),'--stage',stage,'--gui']
+                print('物理驱动执行，默认 120 Hz；关闭窗口后生成评价结果。',flush=True)
+                subprocess.run(cmd,cwd=str(V2.parent),check=False)
+                continue
             value=input('回放秒数（留空完整轨迹）> ').strip();limit=float(value) if value else None
             if limit is not None and (not __import__('math').isfinite(limit) or limit<=0):raise ValueError('回放时长必须为正数')
             print('运动学直接置位；XY/yaw 单位变换，Z=0.034224 m 为临时视觉高度。',flush=True)

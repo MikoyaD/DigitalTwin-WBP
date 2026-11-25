@@ -56,7 +56,7 @@ OUT="$PWD/v2/outputs/manual-offline-p-$(date +%Y%m%d-%H%M%S)"
 # 要从该次生成的 R 继续数值 P0，见下一节；也可首次将 --until r 改为 --until g0。
 ```
 
-期待 `SIGNED_R_NUMERICAL_PASS` 及 `$OUT/R/geometry.json`、`candidate.npz`、`verification.json`。直接 CLI 默认 22 控制点，不会自动启动多目标中的 22→36 或 θ–ρ 恢复；不可据此判定全局无解。
+期待 `SIGNED_R_NUMERICAL_PASS` 及 `$OUT/R/geometry.json`、`candidate.npz`、`verification.json`。直接 CLI 默认 36 控制点；如需 θ–ρ 恢复须显式指定 `--signed-recovery`；不可据此判定全局无解。
 
 ### 2.2 保存 R→P0，以及不经 ROS 的 P1 数值
 
@@ -121,7 +121,7 @@ cp -n v2/configs/global.yaml v2/configs/local_prp.yaml
 | 保存 P | single；`input.stage: P`，`input.path` 指向 P 目录或 `parent_path.json`；`source: saved_parent`，`start_q: null`、`goal: null`、`planner.allowed_time_s: null`。 |
 | 保存 R | 如保存 P，但 `input.stage: R`、路径指含 `geometry.json`、`candidate.npz`、`parent_path.json` 的目录。 |
 
-`input.until: g1` 走最终碰撞；`g0` 是 P0 数值与碰撞待验。当前算法组合 `signed_v1/a_c_v1/formal_v1`，九维限值 profile 不要自行放宽。多目标尝试 22→36 和特定三 chart θ–ρ 恢复；单目标 YAML 默认不自动启用恢复。多目标每段当前默认最多 6 个候选，**通过 `plan_v2.sh` 导出的 `V2_PRP_MAX_ATTEMPTS` 不会透传**；跨进程续跑也不自动累计旧预算。
+`input.until: g1` 走最终碰撞；`g0` 是 P0 数值与碰撞待验。当前算法组合 `signed_v1/a_c_v1/formal_v1`，九维限值 profile 不要自行放宽。单目标和多目标新规划默认 36 控制点，明确 infeasible 时允许既有有界 θ–ρ 恢复。多目标每段当前默认最多 6 个候选，**通过 `plan_v2.sh` 导出的 `V2_PRP_MAX_ATTEMPTS` 不会透传**；跨进程续跑也不自动累计旧预算。
 
 YAML 的相对输入/输出路径相对配置文件所在目录；`package://cr5_car_moveit/...` 基于包路径。入口打印 `PRP_CONFIG` 和 `PRP_GLOBAL_RESULT` 或 `PRP_MULTI_RESULT`。常见结果：
 
@@ -458,3 +458,27 @@ C 才会开始对位和运动，默认不另开 RViz；如确需第二窗口可�
 新 PRP 正式 YAML 运行目录采用 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-规划器`。新 Link6 联合 IK 的任务是 IKPRP；从保存 P/R 续算不执行新 IK，名称为 PRP，规划器取保存父路径。新多目标路径包括 `segments/segment_01/attempt_01/result/{P,R,PRP/P0,PRP/P1}` 和 `task/trajectory.csv`；失败重试递增 attempt，具体状态以 result.json 为准。单目标推荐与快速 CSV 在 `result/PRP/P1/{recommended,fast}/trajectory.csv`，快速候选并不自动获得推荐候选的碰撞验收。旧非 PRP 算法及历史目录不重命名。
 
 任务级 CSV 由本轮运行的拼接数组直接写出，使用标准 time/q/v/a/jerk 九维列和 segment/chart/direction；包含实际运动与驻留行，不从历史 NPZ 转换。最终 CSV 不再因 30 MiB 上限被删除；如超限，storage 报告真实失败。NPZ 已被用户列为废弃格式，扫描和展示不把它作为输入；现行求解链使用 `.arrays`；少量历史格式保留只读兼容，用户授权清理后的范围见最新报告。新输出模块已用已有 CSV 数值做写入与两种读取器检查，尚未在本次运行一次真实五目标规划验证完整新目录。
+
+## 正式输出与 Isaac 120 Hz 物理执行（2026-11）
+
+默认规划输出为 `v2/outputs/`。本实验室该目录是指向 `/home/robot/digitaltwin/cr5_car_moveit_before_git_20261124_012929/v2/outputs/` 的符号链接：Git 迁移时为保留旧实验和 workspace_probe 而建立。它是实际数据的位置，不随本仓库 Git 克隆；搬迁机器时必须单独迁移输出数据并重新设置链接，不能删除指向的备份目录。用户的自定义输出配置仍可使用。
+
+`global.yaml` 当前为多目标配置：`V2_MASTER_URI=http://127.0.0.1:11411 ./v2/scripts/plan_v2.sh --config v2/configs/global.yaml`。单目标使用相同 global 配置的 `task.mode: single` 副本和已配置的 goal；为保持相对路径含义，若把副本放在配置目录以外，应将 `output.root` 指为本机正式输出的绝对路径。示例见本轮 evidence 的 `single_existing_goal.yaml`。不应把 shell 继承的其他 `ROS_MASTER_URI` 误当作 11411；先确认端口空闲或自有环境 READY。
+
+单目标正式目录包括 `IK/`、`ParentPath/`、`Reconstruction/`、`Parameterization/P0` 和 `Parameterization/P1`、`result.json`、`effective_config.json`、`storage.json`、`Execution/`。多目标保留 `segments/`、`task/` 和任务级 `Execution/`。每个执行目录按 `<日期时间>-P1-recommended-120Hz` 或 `<日期时间>-MULTI-120Hz` 命名，冲突附加数字，不覆盖。
+
+执行单目标：`/usr/bin/python3 -m v2.scripts.isaac_execute --task <单目标任务目录>`；多目标添加 `--trajectory <任务目录>/task/trajectory.csv`。加 `--gui` 或使用 `./v2/scripts/view_v2.sh` → Isaac Sim → 轨迹执行；GUI 关闭后完成数据评价。默认 120 Hz，保留 `--physics-hz`。每次保存 `execution_metadata.json`、`states.csv`、`metrics.json`、`execution.log`，派生 CSV 按需生成；默认不绘图。需要单独绘图时执行 `/usr/bin/python3 -m v2.scripts.evaluate_execution <任务目录> <执行目录> --figures`。现有历史图像不删除。
+
+物理执行使用临时地面、圆柱轮代理、低摩擦支撑；不是完整仓储碰撞或真实硬件验证。指标和计算见 `EXECUTION_DATA_DICTIONARY.md` 与 `EXECUTION_EVALUATION.md`。
+
+### 单目标恢复与规划存储预算（2026-11-24）
+
+新规划的单目标 Signed R 与多目标组分默认使用 36 控制点；仅在求解状态为明确 infeasible 时进入已有有界恢复。恢复不免除几何、完整机器人离散碰撞及 P0/P1 验收。单目标仍是一次独立 P 规划，不自动增加 P 重试；多目标按现有规则对部分可重试失败重新运行 IK、P 和下游模块，默认每段最多 6 次。报告首次尝试成功率应与最终任务成功率区分。
+
+规划预算按完整单目标 30 MiB、完整多目标每个目标 30 MiB 聚合（五目标 150 MiB）；统计逻辑字节及去重分配字节中较大者，含保留的失败尝试和共享场景快照，排除 plots 和所有 Execution。预算在规划结果写出、必要临时密集数据清理后检查；规划数值状态与存储状态分别记录，预算超出仍使入口非零退出。历史输出及其当时预算结果不改写。Execution 是独立的物理实验数据，不作为规划存储预算计数，也不因此删除。
+
+### 执行派生 CSV 按需生成
+
+后续正式物理执行默认保留 120 Hz states 与 metrics，不自动保存可重建的 derived.csv；需要时运行 `/usr/bin/python3 -m v2.scripts.evaluate_execution <任务目录> <执行目录> --save-derived`。输入还包括原规划轨迹、机器人 URDF、有效配置和对应版本的评价代码；如果 derived.csv 已存在则拒绝覆盖，旧数据保持不变。图表仍通过 `--figures` 按需生成。五目标新任务中，逐字节一致的失败尝试场景快照使用硬链接共享，其路径与内容保留，不修改历史任务。
+
+配对实验没有发现 22 通过而 36 失败的样本，正式默认使用 36，不自动回退到 22。需要复现旧 22→36 机制时仍可显式传入 `--rho-fallback 36`；不带该参数时直接使用 36。

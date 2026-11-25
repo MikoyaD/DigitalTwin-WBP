@@ -84,7 +84,7 @@ def run(config_path, control=None):
  root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name=experiment_name('single',stage=='new',planner['id'] if stage=='new' else parent['planner_id']);run_dir=Path(control['run_dir_override']) if control.get('run_dir_override') else root/name;run_dir.mkdir(parents=True,exist_ok=False);control['run_dir']=str(run_dir)
  effective={'schema':c['schema'],'input_stage':inp['stage'],'input_path':str(source) if source else None,'scene_map':str(map_path),'parent_map_relocated':relocated_map,'scene_mode':scene['planning_scene'],'scene_snapshot':str(snapshot) if snapshot else None,'master_uri':chosen,'master_source':'environment' if os.environ.get('V2_CALLER_MASTER_URI') else 'config_or_default','python':sys.executable,'overlay_setup':os.environ.get('V2_EXTRA_SETUP') or None,'limits':limits,'algorithms':alg,'task':task,'output_root':str(root),'result_dir':str(run_dir),'compact_output':True,'source_config':str(config_path),'requested_config':c}
  (run_dir/'effective_config.json').write_text(json.dumps(effective,ensure_ascii=False,indent=2));print('PRP_CONFIG',json.dumps(effective,ensure_ascii=False),flush=True)
- work=run_dir/'.work';work.mkdir();result_dir=run_dir/'result';code=1
+ work=run_dir/'.work';work.mkdir();result_dir=run_dir;code=1
  try:
   if stage=='new':
    from . import prp_from_r,prp_from_p,stage_v2
@@ -114,8 +114,10 @@ def run(config_path, control=None):
    if not p_fk['ik_feasible']:raise RuntimeError('P_ENDPOINT_TASK_FK_NOT_PASS')
    command=['--parent',str(work/'P'),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
    command+=['--scene-snapshot',str(work/'scene_snapshot.bin')]
-   if control.get('rho_fallback')==36:command+=['--rho-fallback','36']
-   if control.get('signed_recovery'):command+=['--signed-recovery']
+   # The matched parent-path comparison selected 36 as the formal default.
+   rho_controls=control.get('rho_controls',36);command+=['--rho-controls',str(rho_controls)]
+   if rho_controls==22 and control.get('rho_fallback')==36:command+=['--rho-fallback','36']
+   if control.get('signed_recovery',True):command+=['--signed-recovery']
    code=prp_from_p.main(command)
    trajectory=work/'result/PRP/P1/recommended/trajectory.arrays'
    if until=='g1' and trajectory.is_dir():
@@ -152,7 +154,7 @@ def run(config_path, control=None):
  from . import prp_compact
  storage=prp_compact.finalize(run_dir,work,stage,retain_dense=control.get('retain_dense',False))
  if storage['status']!='PASS':code=1
- csv=result_dir/'PRP/P1/recommended/trajectory.csv'
+ csv=result_dir/'Parameterization/P1/recommended/trajectory.csv'
  if output['plot'] and csv.is_file():
   from .plot_trajectory import draw_one
   draw_one(csv,run_dir/'plots')

@@ -104,7 +104,7 @@ limits:
   acceleration: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
   jerk_soft_reference: 5.0        # 正式 P1 固定的软搜索/筛选参考，不是硬限制
 output:
-  root: ../outputs/prp_yaml        # 相对本 YAML 目录；每次创建独立子目录
+  root: ../outputs        # 相对本 YAML 目录；每次创建独立子目录
   npz: false                       # 不生成 NPZ；计算使用任务临时数组
   csv: compact                     # 只选源行的展示 CSV，不替代验收
   plot: false                      # true 时绘制单目标完整时间轨迹
