@@ -1,0 +1,1 @@
+<library path="lib/libv2_native_rviz_bridge"><class name="v2_native_rviz_bridge/MotionPlanning" type="v2_native_rviz_bridge::Display" base_class_type="rviz::Display"><description>Native MoveIt MotionPlanning with read-only query-state topics.</description></class></library>

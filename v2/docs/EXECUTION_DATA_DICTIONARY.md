@@ -1,3 +1,7 @@
+# 2026-11-25 正式版补充
+
+物理执行默认 `warehouse_physics_self_overlay.usda`；历史简化场景通过 `--stage .../warehouse_color_overlay.usda` 选择。接触事件见运行手册；场景对齐与碰撞边界见遗留问题清单。原有评价字段和历史基线保持不变。
+
 # V2 P1 物理执行数据字典
 
 正式任务默认保存在 `v2/outputs/<任务ID>/`，任务的推荐轨迹为 `Parameterization/P1/recommended/trajectory.csv`；每次执行在该任务的 `Execution/` 创建唯一目录。历史目录保留原格式。`execution_metadata.json` 包含相对任务的参考轨迹路径、时间范围、完成状态、步长、模型和接触边界。执行与分析的公开入口是 `/usr/bin/python3 -m v2.scripts.isaac_execute --task <任务目录>`；追加 `--gui` 启动 GUI，关闭窗口后分析数据。

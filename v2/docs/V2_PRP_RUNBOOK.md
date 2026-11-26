@@ -1,3 +1,70 @@
+# V2-PRP 阶段正式版操作手册（2026-11-25）
+
+本节是当前入口的权威说明；下方历史章节保留供追溯，若有冲突以本节及实际源码为准。九维统一规划：底盘 x/y/yaw 与六关节一起规划；Isaac 回放直接置位，物理执行通过轮和关节驱动。碰撞检查为离散检查，尚未证明连续碰撞或实机安全。
+
+## 0. 环境与恢复
+
+- 依赖 Ubuntu 20.04、ROS Noetic、MoveIt/OMPL、OctoMap、catkin、系统 `/usr/bin/python3` 的 numpy/scipy/yaml/cvxpy/matplotlib/PyKDL；Isaac Sim 4.2 安装于 `/home/robot/isaacsim`，需 GPU/驱动。Gazebo/RViz 展示另需各自依赖和显示环境。真实系统依赖以 package.xml 与运行错误为准，不自动安装或升级。
+- 实验室实测系统 Python 3.8.10、NumPy 1.17.4、SciPy 1.3.3、CVXPY 1.5.2（含 CLARABEL），系统 MoveIt 1.1.16、OMPL 1.6.0。新机先安装 Ubuntu 20.04 与 ROS Noetic，配置 rosdep 后，在工作区终端可用 `rosdep install --from-paths src --ignore-src -r -y` 安装 ROS 包依赖；具体仓库、系统权限和网络由使用者管理，该步骤本轮未在新机运行。再在 `/usr/bin/python3` 环境安装与此环境兼容的 NumPy/SciPy/CVXPY（需 CLARABEL）、PyKDL、matplotlib、PyYAML，运行 `python3 -c 'import cvxpy; print(cvxpy.installed_solvers())'` 时应明确使用 `/usr/bin/python3` 并确认 `CLARABEL`。不要将 Isaac 自带 Python 当作 ROS Noetic Python。
+- 在工作区 `zzs_ws/src/` 恢复 `cr5_car_moveit`、`robot_description`、`aws_robomaker_world`，并按发布目录的 `EXTERNAL_ASSETS.md` 补齐机器人 mesh、机器人 USD、`warehouse_meshes/`。源码包不包含 Isaac 安装和大型资产。`warehouse_v3.usd → robot_with_default_prim.usd + warehouse_meshes`，颜色层 → v3，物理层 → 颜色层，自碰撞层 → 物理层；保留相对路径。当前仿真脚本含实验室 `/home/robot/isaacsim` 和 CUDA 库路径，其他机器需核对实际安装后修改，跨机完整启动未实测。
+- 在工作区终端执行 `source /opt/ros/noetic/setup.bash; cd /home/robot/digitaltwin/zzs_ws; catkin_make`（若已有 catkin-tools 布局需先按该工作区原来的构建方式处理，勿覆盖已有 build/devel），然后 `source devel/setup.bash`。本轮未在新机器执行构建。各自另终端需 source 同一环境。编译依赖以各包 `package.xml`、`CMakeLists.txt` 和实际 ROS 环境为准。
+- 正式输出 `cr5_car_moveit/v2/outputs/`；实验室它是指向旧工程 `cr5_car_moveit_before_git_20261124_012929/v2/outputs` 的符号链接。新机可建立普通目录；若需历史轨迹，单独恢复论文包 `outputs/`，不覆盖现有目录。新 P 需要构建 `workspace_probe`，具体命令见仓库 `SYNC_FILES.md`。场景快照以当前 PlanningScene 实际身份为准，不盲用旧文件。
+
+## 1. 启动规划与目标配置
+
+以下终端目录均为 `/home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit`。V2 使用 `11411` 的专用 Master/MoveIt；若未运行，`./v2/scripts/start_v2.sh --config v2/configs/v2_workspace_single_goal_9d_va_only.yaml` 会启动自己管理的 ROS/MoveIt/OctoMap，随后 `./v2/scripts/status_v2.sh` 应显示 `READY`。保持环境运行；结束仅用 `./v2/scripts/stop_v2.sh` 停自己启动的节点。若端口有别人进程或外部现场，先确认服务、模型、地图和匹配快照，不接管或关闭别人的节点。ROS、场景载入和 workspace_probe 实际要求见下方 §3。
+
+`v2/configs/global.yaml` 是 `v2-prp-v1` 正式配置。`task.start_q` 为 9 维起点；`task.goal.position_m`、`quaternion_xyzw` 指定 Link6 在 world 下单目标，四元数顺序 xyzw；多目标编辑 `task.targets` 的 id、position_m、quaternion_xyzw 及 `dwell_s`。`planner`、`limits.velocity/acceleration`、`algorithms` 是当前规划配置；正式入口目前仅接受 RRTstar/whole、V2_NINE_DOF_VA_ONLY、九维速度各 0.5 和加速度各 1.0 等固定组合，直接改其他值会被拒绝。若研究需要其他限制，须修改并重新验收相关正式约束合同，不能仅改 YAML 或放宽安全要求。默认 `global.yaml` 为 multi；复制一份同目录配置 `cp v2/configs/global.yaml v2/configs/my_single.yaml`，将 `task.mode` 改为 `single` 即可使用其中 goal；不要改动原配置和历史结果。
+
+终端执行：
+
+```bash
+cd /home/robot/digitaltwin/zzs_ws/src/cr5_car_moveit
+./v2/scripts/plan_v2.sh --config v2/configs/my_single.yaml
+./v2/scripts/plan_v2.sh --config v2/configs/global.yaml
+```
+
+两条命令分别是单目标与多目标的新规划；按需执行，持续时间和成功率依任务/随机结果而异。检查终端打印的任务 ID、退出码及 `result.json`、`storage.json`、各阶段 collision/数值结果；命令退出成功不等于连续碰撞安全。每次在 `v2/outputs/<任务ID>/` 新建 `IK/`、`ParentPath/`、`Reconstruction/`、`Parameterization/P0/`、`Parameterization/P1/{fast,recommended}/`。多目标另有 `segments/` 和 `task/trajectory.csv` 及事件信息；查看 `result.json` 中实际选择的 attempt，不把失败 attempt 当作最终组分。推荐单目标 CSV 为 `Parameterization/P1/recommended/trajectory.csv`。单目标规划预算 30 MiB，多目标每目标 30 MiB 聚合；Execution 不计入规划预算。
+
+## 2. 展示与物理执行
+
+终端执行 `./v2/scripts/view_v2.sh`；按界面选 `1 RViz参考轨迹`、`2 Gazebo+RViz实际状态` 或 `3 Isaac Sim`。RViz 是参考显示，Gazebo 现有模式为模型位姿/关节回放，并非已验证的差速动力学闭环。进入 Isaac 后 `1 轨迹回放` 是理想运动学置位，`2 轨迹执行` 为物理驱动；扫描后按编号选最终 P1，或输入 `m` 加 CSV 绝对路径。物理执行对单目标默认 latest `warehouse_physics_self_overlay.usda`；若手动输入旧简化场景，输入完整路径 `.../warehouse_color_overlay.usda`。运动学回放默认 `warehouse_v3.usd`。GUI 由用户观察。
+
+直接 headless 单目标，终端从包根运行，120 Hz 默认：
+
+```bash
+/usr/bin/python3 -m v2.scripts.isaac_execute --task v2/outputs/V2-20261124-235302-SINGLE-IKPRP-RRTstar
+```
+
+多目标必须给任务级轨迹且一次连续执行：
+
+```bash
+/usr/bin/python3 -m v2.scripts.isaac_execute --task v2/outputs/V2-20261124-235412-MULTI-IKPRP-RRTstar --trajectory v2/outputs/V2-20261124-235412-MULTI-IKPRP-RRTstar/task/trajectory.csv
+```
+
+末尾 `--gui` 打开窗口并保持末态，关闭窗口后完成后续评价；显式 `--stage v2/assets/isaac_import_20261124/warehouse_color_overlay.usda` 复现简化场景。输出路径由 `EXECUTION_OUTPUT` 打印，位于任务 `Execution/<时间>-P1-recommended-120Hz/` 或 `...-MULTI-120Hz/`。`execution_metadata.json` 的 `COMPLETED_AND_EVALUATED`、退出码 0、`metrics.json`、`states.csv` 均需核对；默认物理场景另有 `contact_events.json`，零时刻初始化接触需与轨迹中事件分开。仿真物理时间和 GUI 真实时间并非相同概念。
+
+在包根用系统 Python 按需重建派生数据（把占位符替换成实际路径，避免覆盖已有不一致数据）：
+
+```bash
+/usr/bin/python3 -m v2.scripts.evaluate_execution /绝对路径/任务目录 /绝对路径/Execution/运行目录 --save-derived
+```
+
+参考来自规划 CSV，`states.csv` 是 120 Hz 实测物理状态，`derived.csv` 为按需派生误差、速度/加速度/jerk 和 Link6 结果，`metrics.json` 汇总四类指标；定义、单位、插值及差分见 `EXECUTION_DATA_DICTIONARY.md` 与 `EXECUTION_EVALUATION.md`。执行阶段碰撞事件只覆盖已建模几何，检查障碍/自碰撞、触地和时间，不能将无事件泛化为整个仓储完全安全。
+
+## 3. 常见问题与最小验证
+
+- `/usr/bin/python3 -c 'import PyKDL,numpy,scipy'` 不通过：先补齐对应 Noetic 系统 Python 依赖；Conda `python3` 可能没有 PyKDL。本轮两次物理运行后曾出现该错误，原状态保留，用系统 Python 重评；推荐从一开始使用 `/usr/bin/python3`。
+- `MISSING_SETUP`：检查 `v2/scripts/env_noetic.sh`、catkin devel 和实际 overlay；不要猜测覆盖环境。`workspace_probe` 缺失按 `SYNC_FILES.md` 构建。
+- `STAGE_OPEN_FAILED`、USD reference 未找到：按外部资产清单恢复相对路径，检查机器人 USD 和 warehouse_meshes；本源码包本身不含它们。
+- `SYMLINK_REFUSED`：共享发现仅解析可信扫描根，并保留候选路径安全检查；如使用输出符号链接，先确认真实目标存在。路径来自其他机器需重新配置。
+- 搜索不到任务：确认 `v2/outputs/` 数据已恢复、父任务 result 的最终选择/数值/碰撞证据齐全；手动 CSV 仍可用，不能把失败 attempt 当最终 P1。
+- 仿真有障碍碰撞、异常触地或自碰撞：查看 `contact_events.json` 的对象与时间并保留数据，不关闭碰撞或放宽约束制造通过。
+
+完整上机示例：补齐资产并构建 → `start_v2.sh` 和 `status_v2.sh` → 从 global.yaml 制作单目标配置 → `plan_v2.sh --config ...` → 按任务 ID 查验 P1、碰撞及 storage → 在第二终端执行 `/usr/bin/python3 -m v2.scripts.isaac_execute --task v2/outputs/<ID>` → 核对 `COMPLETED_AND_EVALUATED`、metrics 和 contact events；GUI 操作添加 `--gui`。单/多目标配置和结果不要混为同一实验样本。
+
+---
+
 # V2-PRP 手动规划、显示与绘图手册
 
 本文基于实验室电脑当前源码及已有运行证据。规划结果是离线参考轨迹，不等于机器人控制或实际跟踪。历史五目标为 193.672418 s；后续复用前两段的完整任务为 150.166589 s，原执行超容量而后处理单目录达标。
@@ -117,7 +184,7 @@ cp -n v2/configs/global.yaml v2/configs/local_prp.yaml
 | 需求 | 必需 YAML 设置 |
 |---|---|
 | 新单目标 | `task.mode: single`；`input.stage: new`、`input.path: null`；`task.source: configured_goal`，填写九维 `start_q`、`goal`（world/Link6 位置与 quaternion_xyzw）；`planner.id: RRTstar`、`group: whole`、有效 `allowed_time_s`。 |
-| 新五目标 | `task.mode: multi`；new/g1、`source: configured_goal`；填写原九维起点和恰好五个有序 `task.targets`，`dwell_s: 1.0`。从头运行时不要配置 `reuse_segments`。 |
+| 新五目标 | `task.mode: multi`；new/g1、`source: configured_goal`；填写原九维起点和任意正整数个有序、同类型的 `task.targets`（`joint_state` 或 `link_pose`），`dwell_s: 1.0`。从头运行时不要配置 `reuse_segments`。 |
 | 保存 P | single；`input.stage: P`，`input.path` 指向 P 目录或 `parent_path.json`；`source: saved_parent`，`start_q: null`、`goal: null`、`planner.allowed_time_s: null`。 |
 | 保存 R | 如保存 P，但 `input.stage: R`、路径指含 `geometry.json`、`candidate.npz`、`parent_path.json` 的目录。 |
 
@@ -482,3 +549,40 @@ C 才会开始对位和运动，默认不另开 RViz；如确需第二窗口可�
 后续正式物理执行默认保留 120 Hz states 与 metrics，不自动保存可重建的 derived.csv；需要时运行 `/usr/bin/python3 -m v2.scripts.evaluate_execution <任务目录> <执行目录> --save-derived`。输入还包括原规划轨迹、机器人 URDF、有效配置和对应版本的评价代码；如果 derived.csv 已存在则拒绝覆盖，旧数据保持不变。图表仍通过 `--figures` 按需生成。五目标新任务中，逐字节一致的失败尝试场景快照使用硬链接共享，其路径与内容保留，不修改历史任务。
 
 配对实验没有发现 22 通过而 36 失败的样本，正式默认使用 36，不自动回退到 22。需要复现旧 22→36 机制时仍可显式传入 `--rho-fallback 36`；不带该参数时直接使用 36。
+
+### 仓储物理碰撞场景（实验验证）
+
+已有 `warehouse_physics_self_overlay.usda` 在原视觉颜色层上引用仓储静态网格碰撞，启用机器人自碰撞并按 SRDF 对实际刚体设置过滤。现有执行器在 session 建立平面地面、圆柱车轮和低摩擦支撑，不覆盖原始 USD。历史基准可显式指定；最新物理碰撞层现为执行入口默认值：
+
+```bash
+/usr/bin/python3 -m v2.scripts.isaac_execute --task v2/outputs/<任务ID> --stage v2/assets/isaac_import_20261124/warehouse_physics_self_overlay.usda
+```
+
+多目标加 `--trajectory v2/outputs/<任务ID>/task/trajectory.csv`；GUI 加 `--gui`，视觉验收由用户执行。该场景的 `Execution/<运行ID>/contact_events.json` 保存 PhysX 接触 FOUND 及计数，初始化前零时刻事件需单独区分。环境由 23 个仓储网格碰撞体、临时平面与轮代理组成；与规划 OctoMap 的精确高度和完整逐体对应尚未完成，不可声称连续碰撞或实机安全。详见 `/home/robot/digitaltwin/research_management/evidence/V2_ISAAC_WAREHOUSE_PHYSICAL_SCENE_01/REPORT.md`。
+
+
+## RViz 交互任务、叠加及分段基线（本轮新增）
+
+保持 V2 ROS/MoveIt 运行后，使用 `v2/scripts/interactive_task.sh` 设置任务，`v2/scripts/compare_v2.sh` 发布静态叠加，`v2/scripts/sequential_v2.sh` 执行独立单目标顺序基线。具体终端、参数、真实案例、目标模式限制及 RViz 显示配置见 `/home/robot/digitaltwin/research_management/evidence/V2_INTERACTIVE_VISUALIZATION_AND_SEQUENTIAL_PLANNING_01/USER_GUIDE.md`。GUI 实际交互待用户验收；分段底盘复用 Signed R/P1，不是纯 OMPL/TOTG。
+
+
+### 交互和叠加入口更新（2026-11-26）
+
+`interactive_task.sh` 和无参数 `compare_v2.sh` 自动分别打开 RViz；后者复用 Session 轨迹发现并编号多选。完整操作和颜色图例见 `/home/robot/digitaltwin/research_management/evidence/V2_RVIZ_INTERACTION_AND_OVERLAY_REFINEMENT_01/USER_GUIDE.md`。原生基线与 Signed R/P1 辅助顺序方案必须分开报告。
+
+
+### 原生 MotionPlanning 与动态叠加（2026-11-26）
+
+`interactive_task.sh` 使用隔离的原生 MoveIt 派生插件读取编辑中的起终状态；`compare_v2.sh` 提供按任务分组和每轨迹独立锁存话题。命令、Qt 系统依赖和限制见 `/home/robot/digitaltwin/research_management/evidence/V2_NATIVE_MOTIONPLANNING_DYNAMIC_OVERLAY_01/USER_GUIDE.md`。
+
+
+### 交互终端与轨迹数字菜单（2026-11-26）
+
+两入口默认分离后台日志，`--verbose` 查看完整日志；原生目标 `mode state|pose` 后 `add`，`compare_v2.sh` 无参数使用数字菜单。详细步骤见 `/home/robot/digitaltwin/research_management/evidence/V2_INTERACTION_OVERLAY_USABILITY_01/USER_GUIDE.md`。
+
+
+## 当前交互与任意目标规划（2026-11-26）
+
+使用 `./v2/scripts/start_v2.sh` 启动 ROS/MoveIt。另开终端使用 `./v2/scripts/interactive_task.sh`；原生绿色为起点、橙色为目标。命令 `start` 保存起点，`mode state` 或 `mode pose` 选择构型/Link6 目标，逐次编辑并 `add`，`list`、`delete N`、`replace N`、`move N M` 管理顺序。`save` 自动在 `v2/configs/tasks` 生成不覆盖的时间戳 YAML；`save PATH` 指定路径，`load PATH` 恢复，`plan PATH` 保存并调用正式规划。无目标草稿和不同类型目标可保存；正式交互入口要求非空且所有目标同类型；每个构型目标独立执行边界和碰撞检查，位姿目标沿用 IK。规划逐段继承实际终点，驻留 1 秒；任意正整数 N 的完整多目标输出 `task/trajectory.csv`，按目标数计规划存储预算。运动学参考与物理执行不得混淆。
+
+`./v2/scripts/compare_v2.sh` 自动打开独立 RViz；菜单依次选择任务、来源，b 返回任务、q 返回主菜单，轨迹按独立 ROS 话题锁存；RViz 使用 Add → By topic 添加，默认日志分离，`--verbose` 可查看。Isaac 正式入口为 `./v2/scripts/view_v2.sh`，历史已验收场景与碰撞边界见本手册上文；没有连续碰撞或实机安全保证。

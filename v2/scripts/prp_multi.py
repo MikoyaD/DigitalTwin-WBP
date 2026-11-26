@@ -1,4 +1,4 @@
-"""Sequential five-goal orchestration using the existing single-goal PRP runner."""
+"""Sequential multi-goal orchestration using the existing single-goal PRP runner."""
 import copy,datetime,json,math,os,time,traceback,shutil
 from pathlib import Path
 import numpy as np
@@ -79,19 +79,22 @@ def write_task_csv(data,dest):
 
 def run(config_path,c):
  task=c['task'];goals=task.get('targets');start=task.get('start_q');dwell=task.get('dwell_s')
- if c['input'].get('stage')!='new' or c['input'].get('until')!='g1' or task.get('source')!='configured_goal' or not isinstance(goals,list) or len(goals)!=5 or dwell!=1.0:raise ValueError('MULTI_REQUIRES_FIVE_NEW_GOALS_AND_ONE_SECOND_DWELL')
+ if c['input'].get('stage')!='new' or c['input'].get('until')!='g1' or task.get('source')!='configured_goal' or not isinstance(goals,list) or len(goals)<1 or dwell!=1.0:raise ValueError('MULTI_REQUIRES_NONEMPTY_NEW_GOALS_AND_ONE_SECOND_DWELL')
  if not isinstance(start,list) or len(start)!=9 or not all(isinstance(x,(int,float)) and math.isfinite(x) for x in start):raise ValueError('INVALID_MULTI_START')
  for g in goals:
-  if set(g)!={'id','type','frame','link','position_m','quaternion_xyzw'} or g['type']!='link_pose' or g['frame']!='world' or g['link']!='Link6':raise ValueError('UNSUPPORTED_MULTI_GOAL')
+  pose=set(g)=={'id','type','frame','link','position_m','quaternion_xyzw'} and g.get('type')=='link_pose' and g.get('frame')=='world' and g.get('link')=='Link6'
+  state=set(g)=={'id','type','q'} and g.get('type')=='joint_state' and isinstance(g.get('q'),list) and len(g['q'])==9 and all(isinstance(v,(int,float)) and math.isfinite(v) for v in g['q'])
+  if not (pose or state):raise ValueError('UNSUPPORTED_MULTI_GOAL')
  reuse=task.get('reuse_segments',[])
- if not isinstance(reuse,list) or len(reuse)>4 or any(not isinstance(x,dict) or set(x) not in ({'directory','fk_record','target_record'},{'directory','fk_record','target_record','collision_record'}) for x in reuse):raise ValueError('INVALID_REUSED_SEGMENTS')
+ if not isinstance(reuse,list) or len(reuse)>len(goals) or any(not isinstance(x,dict) or set(x) not in ({'directory','fk_record','target_record'},{'directory','fk_record','target_record','collision_record'}) for x in reuse):raise ValueError('INVALID_REUSED_SEGMENTS')
  base=config_path.parent;root=prp_global._path(c['output']['root'],base);root.mkdir(parents=True,exist_ok=True);run=root/prp_global.experiment_name('multi',True,c['planner']['id']);run.mkdir();(run/'segments').mkdir();(run/'Execution').mkdir()
- (run/'effective_config.yaml').write_text(yaml.safe_dump(c,allow_unicode=True,sort_keys=False));summary={'status':'PARTIAL','segments':[],'total_wall_s':None,'input_config':str(config_path),'goals':goals,'rho_policy':'22 then 36 fixed profile; bounded theta/rho recovery on exact infeasibility','dwell_s':1.0};t0=time.perf_counter();segments=[]
+ (run/'effective_config.yaml').write_text(yaml.safe_dump(c,allow_unicode=True,sort_keys=False));summary={'status':'PARTIAL','segments':[],'total_wall_s':None,'input_config':str(config_path),'goals':goals,'rho_policy':'36 controls by default; bounded theta/rho recovery on exact infeasibility','dwell_s':1.0};t0=time.perf_counter();segments=[]
  def save():summary['total_wall_s']=time.perf_counter()-t0;(run/'result.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2))
  try:
   for i,g in enumerate(goals,1):
    print('MULTI_SEGMENT_START',i,flush=True);st=time.perf_counter();descriptor=reuse[i-1] if i<=len(reuse) else None;independent=None
    if descriptor:
+    if g['type']!='link_pose':raise ValueError('REUSE_REQUIRES_LINK_POSE')
     folder=prp_global._path(descriptor['directory'],base).resolve(strict=True);code=0
     # Reuse is allowed only for an explicitly selected, previously accepted
     # trajectory in the same current PlanningScene and for the same Link6 goal.
@@ -169,7 +172,7 @@ def run(config_path,c):
    for endpoint in (0,-1):
     if max(np.max(abs(data['velocity'][endpoint])),np.max(abs(data['acceleration'][endpoint])))>1e-8:raise RuntimeError('GOAL_STOP_NOT_PASS')
    entry.update(status='PASS',final_fk=fkr,collision=cr,numeric=nr);segments.append(data);start=data['q'][-1].tolist();save()
-  if len(segments)==5:
+  if len(segments)==len(goals):
    rows=[];offset=0.;events=[];storage_events=[];lasttheta=None
    for i,z in enumerate(segments):
     q=z['q'].copy();shift=0. if lasttheta is None else round((lasttheta-q[0,2])/(2*math.pi))*2*math.pi;q[:,2]+=shift;storage_events.extend((z['storage_events']+offset).tolist())
@@ -180,7 +183,7 @@ def run(config_path,c):
    if np.any(np.diff(t)<=0) or np.max(abs(v))>.5+tol or np.max(abs(a))>1.+tol or np.max(abs(lat))>1e-6 or np.any(lon[direction>0]<-tol) or np.any(lon[direction<0]>tol) or np.any(abs(lon[direction==0])>tol):raise RuntimeError('TASK_NUMERIC_NOT_PASS')
    taskdir=run/'task';taskdir.mkdir()
    csv_rows=write_task_csv(dict(allz,storage_events=storage_events),taskdir/'trajectory.csv')
-   summary['task']={'numerical':'PASS','collision':'PASS_BY_SAME_SCENE_SEGMENTS_AND_REPEATED_HOLDS','collision_states':sum(x['collision']['checked_states'] for x in summary['segments']),'duration_s':float(t[-1]),'motion_s':float(t[-1]-5),'dwell_s':5.,'samples':len(t),'events':events,'velocity_peak':np.max(abs(v),axis=0).tolist(),'acceleration_peak':np.max(abs(a),axis=0).tolist(),'jerk_peak':np.max(abs(j),axis=0).tolist(),'jerk_timeweighted_mean':(sum(np.trapz(np.abs(z['jerk']),z['t'],axis=0) for z in segments)/t[-1]).tolist(),'lateral_max':float(np.max(abs(lat))),'scope':'discrete segment collision; holds reuse identical checked endpoint states'}
+   summary['task']={'numerical':'PASS','collision':'PASS_BY_SAME_SCENE_SEGMENTS_AND_REPEATED_HOLDS','collision_states':sum(x['collision']['checked_states'] for x in summary['segments']),'duration_s':float(t[-1]),'motion_s':float(t[-1]-len(goals)*dwell),'dwell_s':len(goals)*dwell,'samples':len(t),'events':events,'velocity_peak':np.max(abs(v),axis=0).tolist(),'acceleration_peak':np.max(abs(a),axis=0).tolist(),'jerk_peak':np.max(abs(j),axis=0).tolist(),'jerk_timeweighted_mean':(sum(np.trapz(np.abs(z['jerk']),z['t'],axis=0) for z in segments)/t[-1]).tolist(),'lateral_max':float(np.max(abs(lat))),'scope':'discrete segment collision; holds reuse identical checked endpoint states'}
    # Each accepted segment used the same explicitly matched PlanningScene.
    # Keep one real snapshot, not five copies of the same OctoMap.
    snapshots=[_layout_file(x['directory'],'result/PRP/scene_snapshot.bin') for x in summary['segments']]
@@ -220,9 +223,9 @@ def run(config_path,c):
    source=_layout_file(summary['segments'][0]['directory'],'result/P/parent_path.json')
    if not source.is_file():raise RuntimeError('TASK_PARENT_METADATA_MISSING')
    summary['task']['csv']={'path':str(taskdir/'trajectory.csv'),'bytes':(taskdir/'trajectory.csv').stat().st_size,'rows':csv_rows,'source_rows':len(t),'sampling':'original rows, 50 Hz target, event/extrema and position-error refinement; dense acceptance retained'}
-   summary['status']='SIGNED_FIVE_GOAL_TASK_PASS';save()
+   summary['status']='SIGNED_MULTI_GOAL_TASK_PASS';save()
    (taskdir/'result.json').write_text(json.dumps({'status':'TASK_PASS','display_sampling':True,'source_parent':os.path.relpath(source,taskdir),'collision':{'status':'PASS','checked_states':summary['task']['collision_states']},'scope':summary['task']['scope']},ensure_ascii=False,indent=2))
  except Exception as ex:
   summary['failure_stage_or_reason']=repr(ex);(run/'error.log').write_text(traceback.format_exc());print(traceback.format_exc(),flush=True)
  save();budget=prp_compact.BUDGET*len(goals);logical,allocated=prp_compact._measure(run,exclude_execution=True);summary['storage']={'logical_bytes':logical,'allocated_bytes':allocated,'budget_bytes':budget,'scope':'complete planning task excluding Execution and plots; 30 MiB per goal','status':'PASS' if max(logical,allocated)<=budget else 'OUTPUT_BUDGET_EXCEEDED'};save();logical,allocated=prp_compact._measure(run,exclude_execution=True);summary['storage'].update(logical_bytes=logical,allocated_bytes=allocated,status='PASS' if max(logical,allocated)<=budget else 'OUTPUT_BUDGET_EXCEEDED');save();print('PRP_MULTI_RESULT',run,summary['status'],json.dumps(summary['storage']),flush=True)
- return 0 if summary['status']=='SIGNED_FIVE_GOAL_TASK_PASS' and summary['storage']['status']=='PASS' else 1
+ return 0 if summary['status']=='SIGNED_MULTI_GOAL_TASK_PASS' and summary['storage']['status']=='PASS' else 1

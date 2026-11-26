@@ -9,7 +9,7 @@ DEFAULT=ROOT/'v2/outputs/V2-20261124-014348-SINGLE-IKPRP-RRTstar'
 p=argparse.ArgumentParser()
 p.add_argument('--task',default=str(DEFAULT))
 p.add_argument('--trajectory',help='CSV within the selected task; defaults to P1 recommended')
-p.add_argument('--stage',default=str(ROOT/'v2/assets/isaac_import_20261124/warehouse_color_overlay.usda'))
+p.add_argument('--stage',default=str(ROOT/'v2/assets/isaac_import_20261124/warehouse_physics_self_overlay.usda'))
 p.add_argument('--physics-hz',type=int,default=120)
 p.add_argument('--gui',action='store_true')
 a=p.parse_args()
@@ -31,6 +31,9 @@ while True:
  try:out.mkdir();break
  except FileExistsError:index+=1
 meta={'planning_task_id':task.name,'reference_trajectory':str(trajectory.relative_to(task)),'physics_hz':a.physics_hz,'physics_dt_s':1/a.physics_hz,'control_update_hz':a.physics_hz,'derived_policy':'on demand: evaluate_execution --save-derived','solver':'PGS','trajectory_time_range_s':[t0,t1],'status':'STARTED','stage':str(stage),'joint_order':['joint%d'%i for i in range(1,7)],'root_initial_z_m':0.034224,'control':'DifferentialController wheel velocity; ArticulationController position drives','wheel_radius_m':0.06,'wheel_track_m':0.395,'joint2_stiffness':2000,'joint_damping':50,'contact':'temporary ground plane, wheel cylinders and low-friction support','limitations':'Experimental contact model; warehouse visual geometry lacks full collision validation; no hardware safety certification.'}
+if stage.name.startswith('warehouse_physics_'):
+ meta['contact']='warehouse static mesh colliders; session ground, wheel cylinders, low-friction supports; PhysX contact events'
+ meta['limitations']='Experimental contact model; OctoMap-to-visual height registration and comprehensive self-collision coverage remain unverified; no continuous collision or hardware safety certification.'
 (out/'execution_metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
 lib=Path('/tmp/v2_isaac_lib');lib.mkdir(exist_ok=True);link=lib/'libcuda.so'
 if not link.exists():link.symlink_to('/usr/lib/x86_64-linux-gnu/libcuda.so.1')

@@ -98,3 +98,12 @@ outputs 递归检查 354 CSV，其中 185 条时间轨迹：原有紧凑 98 条�
 用户确定 NPZ 为废弃格式：展示扫描不读取历史 NPZ，不从 NPZ 转换 CSV；新运行的数组包链路已实际完成第2–5段及完整任务，新组分临时数组已清理。当前正式 YAML 新结果命名 `V2-YYYYMMDD-HHMMSS-SINGLE|MULTI-IKPRP|PRP-实际规划器`，P/R 续算为 PRP、新 Link6 IK 为 IKPRP；旧非 PRP 实验和历史路径保留。推荐/fast CSV 在 `result/PRP/P1/{recommended,fast}/trajectory.csv`，多目标按 `segments/segment_XX/attempt_XX/result/…`，整体为 `task/trajectory.csv`。整体 CSV 由本轮任务拼接数组直接写出，保留状态与驻留；不删除 CSV 以迎合 30 MiB，超额必须报告。早期新五目标运行在首段碰撞查询时限失败；随后续跑完整任务已生成 CSV 和容量结果，见本文当前状态。
 
 两种展示模式复用同一 CSV 扫描与三类名称：单目标、多目标、多目标组分。历史父路径缺失、模型引用错误或没有 CSV 的实验不自动伪造可播放输入；碰撞失败轨迹在 Gazebo 前要求用户确认。最新实际扫描、用户日志与测试见仓库外 `research_management/evidence/V2_OUTPUT_SCAN_STANDARD_20261122/`。
+
+### 2026-11-26：原生 MotionPlanning 及动态轨迹叠加
+
+`interactive_task.sh` 使用本地 `v2_native_rviz_bridge` 派生原生插件读取 query 起终状态；不覆盖系统插件。编译须使用系统 Qt 5.12；入口隔离原生交互 marker 话题以避免干扰旧 RViz。`compare_v2.sh` 无参数进入持续式任务分组与独立锁存轨迹话题菜单。原生编辑后的新任务真实规划未通过 Signed R；GUI 用户体验待验收。完整命令、证据及边界见 `/home/robot/digitaltwin/research_management/evidence/V2_NATIVE_MOTIONPLANNING_DYNAMIC_OVERLAY_01/`。本轮未提交。
+
+
+### 2026-11-26 任意数量目标
+
+原生任务保存草稿允许任意数量和类型；正式交互规划使用任意正整数同类构型或 Link6 位姿目标。真实两构型、两位姿规划均通过，详见 `/home/robot/digitaltwin/research_management/evidence/V2_INTERACTION_GENERALIZED_MULTI_RELEASE_01/REPORT.md`。统一手册和项目报告的仓库同步副本在本目录，仓库外 `/home/robot/digitaltwin/` 文件为维护入口。

@@ -122,8 +122,8 @@ def _final_p1_evidence(path):
         task=json.loads((path.parent/'result.json').read_text())
         result=json.loads((root/'result.json').read_text())
         segments=result.get('segments',[])
-        if (result.get('status')!='SIGNED_FIVE_GOAL_TASK_PASS' or task.get('status')!='TASK_PASS'
-            or len(segments)!=5 or any(x.get('status')!='PASS' for x in segments)
+        if (result.get('status') not in ('SIGNED_FIVE_GOAL_TASK_PASS','SIGNED_MULTI_GOAL_TASK_PASS') or task.get('status')!='TASK_PASS'
+            or not segments or len(segments)!=len(result.get('goals',[])) or any(x.get('status')!='PASS' for x in segments)
             or result.get('task',{}).get('numerical')!='PASS'
             or 'FAIL' in str(result.get('task',{}).get('collision','')).upper()
             or task.get('collision',{}).get('status')=='FAIL'
@@ -215,7 +215,7 @@ def interactive_isaac():
             else:raise ValueError('无效轨迹选择')
             data=load_trajectory(selected)
             print('已选择：%s | %s | %s | %.6f s'%(name,kind,data.source,data.time_s[-1]-data.time_s[0]),flush=True)
-            default_stage=str(V2/'assets/isaac_import_20261124/warehouse_v3.usd')
+            default_stage=str(V2/'assets/isaac_import_20261124'/('warehouse_physics_self_overlay.usda' if choice=='2' else 'warehouse_v3.usd'))
             stage_choice=input('Stage：1 默认仓储 | 2 手动输入 USD（默认 1）> ').strip() or '1'
             if stage_choice=='1':stage=default_stage
             elif stage_choice=='2':

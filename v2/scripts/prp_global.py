@@ -38,7 +38,9 @@ def run(config_path, control=None):
   if inp.get('path') is not None or task.get('source')!='configured_goal':raise ValueError('NEW_REQUIRES_CONFIGURED_GOAL_AND_NULL_PATH')
   goal=task.get('goal');start=task.get('start_q');duration=planner.get('allowed_time_s')
   def vec(x,n):return isinstance(x,list) and len(x)==n and all(isinstance(i,(int,float)) and not isinstance(i,bool) and math.isfinite(i) for i in x)
-  if not vec(start,9) or not isinstance(goal,dict) or set(goal)!={'type','link','frame','position_m','quaternion_xyzw'} or goal['type']!='link_pose' or goal['link']!='Link6' or goal['frame']!='world' or not vec(goal['position_m'],3) or not vec(goal['quaternion_xyzw'],4) or abs(sum(v*v for v in goal['quaternion_xyzw'])-1)>2e-6:raise ValueError('INVALID_CONFIGURED_GOAL')
+  pose_ok=isinstance(goal,dict) and set(goal)=={'type','link','frame','position_m','quaternion_xyzw'} and goal['type']=='link_pose' and goal['link']=='Link6' and goal['frame']=='world' and vec(goal['position_m'],3) and vec(goal['quaternion_xyzw'],4) and abs(sum(v*v for v in goal['quaternion_xyzw'])-1)<=2e-6
+  state_ok=isinstance(goal,dict) and set(goal)=={'type','q'} and goal.get('type')=='joint_state' and vec(goal.get('q'),9)
+  if not vec(start,9) or not (pose_ok or state_ok):raise ValueError('INVALID_CONFIGURED_GOAL')
   if not isinstance(duration,(int,float)) or isinstance(duration,bool) or not 0<duration<=120:raise ValueError('INVALID_PLANNING_TIME')
  else:
   if task.get('source')!='saved_parent' or task.get('start_q') is not None or task.get('goal') is not None:raise ValueError('SAVED_PARENT_CANNOT_OVERRIDE_GOAL')
@@ -81,7 +83,7 @@ def run(config_path, control=None):
  chosen=os.environ.get('V2_CALLER_MASTER_URI') or runtime.get('master_uri') or runtime_v2.URI
  if not chosen.startswith(('http://','https://')):raise ValueError('INVALID_MASTER_URI')
  os.environ['ROS_MASTER_URI']=chosen;os.environ['V2_MASTER_URI']=chosen
- root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name=experiment_name('single',stage=='new',planner['id'] if stage=='new' else parent['planner_id']);run_dir=Path(control['run_dir_override']) if control.get('run_dir_override') else root/name;run_dir.mkdir(parents=True,exist_ok=False);control['run_dir']=str(run_dir)
+ root=_path(output['root'],base);root.mkdir(parents=True,exist_ok=True);name=experiment_name('single',stage=='new' and task['goal']['type']=='link_pose',planner['id'] if stage=='new' else parent['planner_id']);run_dir=Path(control['run_dir_override']) if control.get('run_dir_override') else root/name;run_dir.mkdir(parents=True,exist_ok=False);control['run_dir']=str(run_dir)
  effective={'schema':c['schema'],'input_stage':inp['stage'],'input_path':str(source) if source else None,'scene_map':str(map_path),'parent_map_relocated':relocated_map,'scene_mode':scene['planning_scene'],'scene_snapshot':str(snapshot) if snapshot else None,'master_uri':chosen,'master_source':'environment' if os.environ.get('V2_CALLER_MASTER_URI') else 'config_or_default','python':sys.executable,'overlay_setup':os.environ.get('V2_EXTRA_SETUP') or None,'limits':limits,'algorithms':alg,'task':task,'output_root':str(root),'result_dir':str(run_dir),'compact_output':True,'source_config':str(config_path),'requested_config':c}
  (run_dir/'effective_config.json').write_text(json.dumps(effective,ensure_ascii=False,indent=2));print('PRP_CONFIG',json.dumps(effective,ensure_ascii=False),flush=True)
  work=run_dir/'.work';work.mkdir();result_dir=run_dir;code=1
@@ -104,13 +106,23 @@ def run(config_path, control=None):
      if Path(runtime_state['map']).resolve()!=map_path:raise RuntimeError('WAREHOUSE_RUNTIME_MAP_MISMATCH')
     elif not snapshot or snapshot.read_bytes()!=(d/'scene_snapshot.bin').read_bytes():raise RuntimeError('EXTERNAL_SCENE_REQUIRES_MATCHING_EXPLICIT_SNAPSHOT')
    from .joint_ik import JointIK
-   pose={'frame_id':goal['frame'],'link_name':goal['link'],'position':goal['position_m'],'orientation_xyzw':goal['quaternion_xyzw']}
-   (work/'IK').mkdir();ik=JointIK(cfg,pose);(work/'IK/target.json').write_text(json.dumps(ik.target(),indent=2));ik_result=ik.solve(task['start_q'],1);(work/'IK/result.json').write_text(json.dumps(ik_result,indent=2))
+   import numpy as np
+   state_goal=goal['type']=='joint_state'
+   if state_goal:
+    from ..core.kdl_fk import LocalFK
+    target_q=np.asarray(goal['q'],float).copy();target_q[2]=math.atan2(math.sin(target_q[2]),math.cos(target_q[2]));pos,rotation=LocalFK((runtime_v2.PACKAGE/'config/gazebo_combined_robot.urdf').read_text()).pose(target_q);pose={'frame_id':'world','link_name':'Link6','position':pos.tolist(),'orientation_xyzw':rotation.as_quat().tolist()}
+   else:pose={'frame_id':goal['frame'],'link_name':goal['link'],'position':goal['position_m'],'orientation_xyzw':goal['quaternion_xyzw']}
+   (work/'IK').mkdir();ik=JointIK(cfg,pose);(work/'IK/target.json').write_text(json.dumps(ik.target(),indent=2))
+   if state_goal:
+    checked=ik.check(target_q);start_checked=ik.check(task['start_q']);ik_result={'q':target_q.tolist(),'ik_feasible':checked['bounds']['status']=='PASS' and checked['scene_valid'],'source':'explicit_joint_state','target_validation':checked,'start_validation':start_checked}
+    if start_checked['bounds']['status']!='PASS' or not start_checked['scene_valid']:raise RuntimeError('INVALID_START_STATE')
+   else:ik_result=ik.solve(task['start_q'],1)
+   (work/'IK/result.json').write_text(json.dumps(ik_result,indent=2))
    if not ik_result['ik_feasible']:raise RuntimeError('IK_POSTERIOR_NOT_FEASIBLE')
    plan_task={'id':'yaml_single','start_q':task['start_q'],'goal_q':ik_result['q'],'goal_tolerance':[.0005]*9}
    stage_v2.planning(cfg,plan_task,['global.yaml','new'],out=work/'P',context_fn=lambda _:scene_info)
    # A MoveIt joint-region success is not a Link6 task-goal success.
-   parent_file=work/'P/parent_path.json';actual=json.loads(parent_file.read_text());p_fk=ik.check(actual['path']['q'][-1]);(work/'IK/p_endpoint_fk.json').write_text(json.dumps(p_fk,indent=2));actual['planning']['task_goal_fk']=p_fk;actual['planning']['task_goal_status']='PASS' if p_fk['ik_feasible'] else 'FAIL';parent_file.write_text(json.dumps(actual,indent=2))
+   parent_file=work/'P/parent_path.json';actual=json.loads(parent_file.read_text());p_fk=ik.check(actual['path']['q'][-1]);p_fk['joint_target_max_error']=float(max(np.max(np.abs(np.asarray(actual['path']['q'][-1])[[0,1,3,4,5,6,7,8]]-target_q[[0,1,3,4,5,6,7,8]])),abs(math.atan2(math.sin(actual['path']['q'][-1][2]-target_q[2]),math.cos(actual['path']['q'][-1][2]-target_q[2]))))) if state_goal else None;p_fk['ik_feasible']=p_fk['ik_feasible'] and (not state_goal or p_fk['joint_target_max_error']<=.002);(work/'IK/p_endpoint_fk.json').write_text(json.dumps(p_fk,indent=2));actual['planning']['task_goal_fk']=p_fk;actual['planning']['task_goal_status']='PASS' if p_fk['ik_feasible'] else 'FAIL';parent_file.write_text(json.dumps(actual,indent=2))
    if not p_fk['ik_feasible']:raise RuntimeError('P_ENDPOINT_TASK_FK_NOT_PASS')
    command=['--parent',str(work/'P'),'--out',str(work/'result'),'--until',until,'--scene-map',str(map_path),'--compact-output']
    command+=['--scene-snapshot',str(work/'scene_snapshot.bin')]
@@ -123,7 +135,10 @@ def run(config_path, control=None):
    if until=='g1' and trajectory.is_dir():
     import numpy as np
     from ..core import array_store as store
-    with store.load(trajectory) as z:fk=ik.check(z['q'][-1])
+    with store.load(trajectory) as z:
+     fk=ik.check(z['q'][-1]);dq=np.asarray(z['q'][-1])-target_q if state_goal else None
+     if state_goal:
+      dq[2]=math.atan2(math.sin(dq[2]),math.cos(dq[2]));fk['joint_target_max_error']=float(np.max(np.abs(dq)));fk['ik_feasible']=fk['ik_feasible'] and fk['joint_target_max_error']<=.002
     (work/'IK/final_fk.json').write_text(json.dumps(fk,indent=2))
     if not fk['ik_feasible']:
      for f in (work/'result/result.json',work/'result/PRP/result.json'):

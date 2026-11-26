@@ -28,6 +28,34 @@ try:
  for name in ('wheel_left_link','wheel_right_link'):
   link='/Warehouse/robot_with_default_prim/'+name;UsdPhysics.CollisionAPI(stage.GetPrimAtPath(link+'/collisions')).GetCollisionEnabledAttr().Set(False)
   c=UsdGeom.Cylinder.Define(stage,link+'/TrackingCylinder');c.CreateAxisAttr('Y');c.CreateRadiusAttr(.06);c.CreateHeightAttr(.04);UsdPhysics.CollisionAPI.Apply(c.GetPrim())
+ if Path(args.stage).name.startswith("warehouse_physics_"):
+  # Instrument contact events in the session only; static visual meshes obtain collision from the overlay.
+  import omni.physx
+  from pxr import PhysicsSchemaTools
+  from omni.physx.bindings._physx import ContactEventType
+  robot_prefix='/Warehouse/robot_with_default_prim/'
+  for prim in stage.Traverse():
+   if str(prim.GetPath()).startswith(robot_prefix) and prim.HasAPI(UsdPhysics.RigidBodyAPI):
+    PhysxSchema.PhysxContactReportAPI.Apply(prim).CreateThresholdAttr(0.0)
+  contact_events=[];contact_counts={};contact_clock={'time':0.0}
+  def on_contacts(headers,data):
+   for h in headers:
+    if h.type not in (ContactEventType.CONTACT_FOUND,ContactEventType.CONTACT_PERSIST):continue
+    paths=[str(PhysicsSchemaTools.intToSdfPath(h.collider0)),str(PhysicsSchemaTools.intToSdfPath(h.collider1))]
+    rp=[s for s in paths if s.startswith(robot_prefix)]
+    if not rp:continue
+    other=[s for s in paths if not s.startswith(robot_prefix)]
+    if not other:kind='robot_self'
+    elif 'ExperimentTrackingGround' in other[0]:
+     kind='normal_support' if any(x in rp[0] for x in ('wheel_left_link','wheel_right_link','ball_left_link','ball_right_link')) else 'unexpected_ground'
+    else:kind='warehouse_or_probe'
+    contact_counts[kind]=contact_counts.get(kind,0)+1
+    if h.type==ContactEventType.CONTACT_FOUND:
+     rec={'sim_time_s':contact_clock['time'],'type':kind,'colliders':paths}
+     if h.num_contact_data:
+      d=data[h.contact_data_offset];rec.update(position=list(d.position),normal=list(d.normal),impulse=list(d.impulse))
+     contact_events.append(rec)
+  contact_subscription=omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(on_contacts)
  world=World(stage_units_in_meters=1.,physics_dt=dt,rendering_dt=1/60);world.get_physics_context().set_solver_type('PGS');world.reset();art=Articulation(prim_path='/Warehouse/robot_with_default_prim/car_link');art.initialize()
  if not art.handles_initialized:raise RuntimeError('ARTICULATION_INIT_FAILED')
  wheels_rigid=[RigidPrim(prim_path='/Warehouse/robot_with_default_prim/'+name) for name in ('wheel_left_link','wheel_right_link')]
@@ -39,6 +67,7 @@ try:
  prev=float(world.current_time)
  def step(n):
   global prev
+  if 'contact_clock' in globals():contact_clock['time']=float(world.current_time)
   world.step(render=False);now=float(world.current_time)
   if abs(now-prev-dt)>1e-5:raise RuntimeError('BAD_PHYSICS_TIMESTEP')
   prev=now
@@ -87,6 +116,8 @@ try:
 except Exception as e:
  result.update(status='FAIL',error=repr(e),last_trajectory_time_s=float(t) if 't' in locals() else None,recorded_samples=len(rows) if 'rows' in locals() else 0);traceback.print_exc()
 finally:
+ if 'contact_counts' in globals():
+  (out/'contact_events.json').write_text(json.dumps({'counts':contact_counts,'events':contact_events},indent=2)+'\n')
  (out/'metrics.json').write_text(json.dumps(result,indent=2)+'\n')
  if args.gui and args.hold_open:
   try:

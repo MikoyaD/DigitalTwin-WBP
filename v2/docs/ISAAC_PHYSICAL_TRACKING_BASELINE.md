@@ -1,3 +1,7 @@
+# 2026-11-25 正式版补充
+
+物理执行默认 `warehouse_physics_self_overlay.usda`；历史简化场景通过 `--stage .../warehouse_color_overlay.usda` 选择。接触事件见运行手册；场景对齐与碰撞边界见遗留问题清单。原有评价字段和历史基线保持不变。
+
 # Isaac P1 物理跟踪基线（2026-11-24）
 
 阶段：`PHYSICAL_TRACKING_BASELINE: ACCEPTED`（用户认可跟踪效果）。已归档分层结论：`FULL_P1_EXECUTION: PASS`、`TRACKING_PERFORMANCE: PASS`、`PHYSICAL_CONSTRAINTS: FAIL`、`JOINT_FEEDBACK_CONSISTENCY: FAIL`、`WAREHOUSE_COLLISION_VALIDATION: NOT_VERIFIED`。实际加速度超出规划评价基准及位置速度积分残差保留为后续执行性能研究问题，不隐去原结论；物理执行不表示实机或安全验证通过。

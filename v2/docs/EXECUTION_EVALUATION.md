@@ -1,3 +1,7 @@
+# 2026-11-25 正式版补充
+
+物理执行默认 `warehouse_physics_self_overlay.usda`；历史简化场景通过 `--stage .../warehouse_color_overlay.usda` 选择。接触事件见运行手册；场景对齐与碰撞边界见遗留问题清单。原有评价字段和历史基线保持不变。
+
 # V2 P1 物理执行评价
 
 120 Hz、PGS；每步共用仿真时间插值九维参考。参考底盘速度前馈和车体系位置/航向反馈经 Isaac DifferentialController 形成轮速命令，Isaac ArticulationController 分别驱动轮速与六关节位置。除一次初始化外不直接重设状态；实际关节速度为 API 原值。参数及临时地面、轮碰撞代理、低摩擦支撑记录于每次 metadata。连续碰撞与完整仓储碰撞尚未验证；此前 240 Hz 的物理约束和关节反馈一致性失败结论不因 120 Hz 数据消失。实际限制偏离是仿真实验性能指标，不能代替真实设备安全验证。
